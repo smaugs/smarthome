@@ -148,6 +148,9 @@ def _fadejob(item, dest, step, delta):
         item._fading = False
         item(dest, 'Fader')
 
+class ItemParser():
+    def __init__(self):
+        pass
 
 #####################################################################
 # Item Class
@@ -157,6 +160,7 @@ def _fadejob(item, dest, step, delta):
 class Item():
 
     def __init__(self, smarthome, parent, path, config):
+        
         self._autotimer = False
         self._cache = False
         self.cast = _cast_bool
@@ -168,14 +172,17 @@ class Item():
         self._enforce_updates = False
         self._eval = None
         self._eval_trigger = False
+        self._trigger = None
+        self._trigger_condition = None
         self._fading = False
         self._items_to_trigger = []
-        self.__last_change = smarthome.now()
-        self.__last_update = smarthome.now()
+        now = smarthome.now()
+        self.__last_change = now
+        self.__last_update = now
         self._lock = threading.Condition()
         self.__logics_to_trigger = []
         self._name = path
-        self.__prev_change = smarthome.now()
+        self.__prev_change = now
         self.__methods_to_trigger = []
         self.__parent = parent
         self._path = path
@@ -197,6 +204,8 @@ class Item():
                 elif attr in [KEY_EVAL]:
                     value = self.get_stringwithabsolutepathes(value, 'sh.', '(', KEY_EVAL)
                     setattr(self, '_' + attr, value)
+                elif attr in ['trigger','trigger_condition']:
+                    setattr(self,'_'+attr,value)
                 elif attr in [KEY_CACHE, KEY_ENFORCE_UPDATES]:  # cast to bool
                     try:
                         setattr(self, '_' + attr, _cast_bool(value))
@@ -384,6 +393,13 @@ class Item():
     
 
     def __call__(self, value=None, caller='Logic', source=None, dest=None):
+        if self._trigger_condition is not None and self._trigger_condition =='get':
+            sh = self._sh  # noqa
+            try:
+                eval(self._trigger)
+            except Exception as e:
+                logger.info("can't call trigger on get: {}".format(e))
+
         if value is None or self._type is None:
             return self._value
         if self._eval:
@@ -507,6 +523,8 @@ class Item():
         if self._autotimer and caller != 'Autotimer' and not self._fading:
             _time, _value = self._autotimer
             self.timer(_time, _value, True)
+        if self._trigger:
+            logger.debug("item trigger called")
 
     def add_logic_trigger(self, logic):
         self.__logics_to_trigger.append(logic)
@@ -631,7 +649,7 @@ class Item():
         """
         
         """
-	if self.type == 'bool':
+        if self._type == 'bool':
             self(not self._value)
 
     def jsonvars(self):
