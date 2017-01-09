@@ -627,6 +627,12 @@ class Item():
     def get_children_path(self):
         return [item._path
                 for item in self.__children]
+    def toggle(self):
+        """
+        
+        """
+	if self.type == 'bool':
+            self(not self._value)
 
     def jsonvars(self):
         """
@@ -649,3 +655,4 @@ class Item():
 
     def to_json(self):
        return json.dumps(self.jsonvars(), sort_keys=True, indent=2)
+
