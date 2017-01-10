@@ -22,10 +22,12 @@ class MockScheduler():
 class MockSmartHome():
 
     def __init__(self):
+        self._sh = self
+        self.sh = self
         self.__logs = {}
         self.__item_dict = {}
         self.__items = []
-        self.children = []
+        self.__children = []
         self._plugins = []
         self.scheduler = MockScheduler()
         self.connections = lib.connection.Connections()
@@ -37,18 +39,25 @@ class MockSmartHome():
         return self._plugins
 
     def with_items_from(self, conf):
+        import lib.itembuilder
         item_conf = lib.config.parse(conf, None)
-        for attr, value in item_conf.items():
-            if isinstance(value, dict):
-                child_path = attr
-                try:
-                    child = lib.item.Item(self, self, child_path, value)
-                except Exception as e:
-                    print("Item {}: problem creating: {}".format(child_path, e))
-                else:
-                    vars(self)[attr] = child
-                    self.add_item(child_path, child)
-                    self.children.append(child)
+        ib = lib.itembuilder.ItemBuilder(self)
+        ib.build_itemtree(item_conf,self)
+        _children, self.__item_dict, self.__items = ib.get_items()
+        ib.run_items()
+        #for item in self.__children:
+         #   vars(self)[item._name] = item
+        # for attr, value in item_conf.items():
+        #     if isinstance(value, dict):
+        #         child_path = attr
+        #         try:
+        #             child = lib.item.Item(self, self, child_path, value)
+        #         except Exception as e:
+        #             print("Item {}: problem creating: {}".format(child_path, e))
+        #         else:
+        #             vars(self)[attr] = child
+        #             self.add_item(child_path, child)
+        #             self.children.append(child)
         return item_conf
 
     def add_log(self, name, log):
@@ -73,6 +82,11 @@ class MockSmartHome():
     def return_plugins(self):
         for plugin in self._plugins:
             yield plugin
+
+    def append_child(self, child, name):
+        self.__children.append(child)
+        # add top level itemst to SmartHome object.
+        vars(self)[name] = child
 
     def string2bool(self, string):
         if isinstance(string, bool):

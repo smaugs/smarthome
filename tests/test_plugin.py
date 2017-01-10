@@ -7,9 +7,11 @@ from lib.model.smartplugin import SmartPlugin
 from tests.mock.core import MockSmartHome
 
 class TestConfig(unittest.TestCase):
-
+	#@classmethod
+	#def setUpClass(self):
 	def setUp(self):
 		self.sh = MockSmartHome()
+		print("call setup")
 		self.plugins = self.sh.with_plugins_from(common.BASE + "/tests/resources/plugin")
 		self.item_conf = self.sh.with_items_from(common.BASE + "/tests/resources/plugin_items.conf")
 
@@ -73,6 +75,14 @@ class TestConfig(unittest.TestCase):
 		config_mock = {'key3@false', 'value3'}
 		self.assertFalse(wolplug.plugin.has_iattr(config_mock, "key3"))
 
+	def test_plugin_instance_set_value(self):
+		wolplug = self.plugins.get_plugin("wol_ww")
+		it = self.sh.return_item("item3.item3b.item3b1.item3b1a")
+		print(wolplug.plugin.get_instance_name())
+		#config_mock = dict({'key3@bind', 'value3'})
+		wolplug.plugin.set_attr_value(it.conf, "key4",[wolplug.plugin.get_iattr_value(it.conf,'key4'),])
+		print (it.conf)
+	
 	def test_plugin_instance_not_set_get_iattr_value(self):
 		wolplug = self.plugins.get_plugin("wol")
 

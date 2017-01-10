@@ -313,70 +313,56 @@ class SmartHome():
 
         #############################refactor
         #FIXME : remove old_impl
-        old_impl= False
-        if old_impl:
-            for attr, value in item_conf.items():
-                if isinstance(value, dict):
-                    child_path = attr
-                    try:
-                        child = lib.item.Item(self, self, child_path, value)
-                    except Exception as e:
-                        self.logger.error("Item {}: problem creating: ()".format(child_path, e))
-                    else:
-                        vars(self)[attr] = child
-                        self.add_item(child_path, child)
-                        self.append_child(child)
-            del (item_conf)  # clean up
-            for item in self.return_items():
-                item._init_prerun()
-            for item in self.return_items():
-                item._init_run()
-        else:
-        ######################refactor###################################
-            ib = ItemBuilder(self)
-            self.__children, self.__item_dict, self.__items =  ib.build_itemtree(item_conf)
+        # old_impl= False
+        # if old_impl:
+        #     for attr, value in item_conf.items():
+        #         if isinstance(value, dict):
+        #             child_path = attr
+        #             try:
+        #                 child = lib.item.Item(self, self, child_path, value)
+        #             except Exception as e:
+        #                 self.logger.error("Item {}: problem creating: ()".format(child_path, e))
+        #             else:
+        #                 vars(self)[attr] = child
+        #                 self.add_item(child_path, child)
+        #                 self.append_child(child)
+        #     del (item_conf)  # clean up
+        #     for item in self.return_items():
+        #         item._init_prerun()
+        #     for item in self.return_items():
+        #         item._init_run()
+        #
+        # ######################refactor###################################
+        ib = ItemBuilder(self)
+        ib.build_itemtree(item_conf, self)
+        children2, self.__item_dict, self.__items =  ib.get_items()
 
-            del (item_conf)  # clean up
-            # add top level itemst to SmartHome object.
-            for item in self.__children:
-                vars(self)[item._name] = item
-            # add top level itemst to SmartHome object.
-            for item in self.return_items():
-                item._init_prerun()
-            for item in self.return_items():
-                item._init_run()
+        del (item_conf)  # clean up
+
+        ib.run_items()
 
         ###########################refactor
         self.item_count = len(self.__items)
         self.logger.info("Items: {}".format(self.item_count))
         self.logger.info(self.__items)
+        if self.item_count != 59:
+            raise
 
-        #############################################################
         # Init Logics
-        #############################################################
         self._logics = lib.logic.Logics(self, self._logic_conf_basename, self._env_logic_conf_basename)
 
-        #############################################################
         # Init Scenes
-        #############################################################
         lib.scene.Scenes(self)
 
-        #############################################################
         # Start Connections
-        #############################################################
         self.scheduler.add('Connections', self.connections.check, cycle=10, offset=0)
 
-        #############################################################
         # Start Plugins
-        #############################################################
         self._plugins.start()
 
-        #############################################################
         # Execute Maintenance Method
-        #############################################################
         self.scheduler.add('sh.gc', self._maintenance, prio=8, cron=['init', '4 2 * *'], offset=0)
 
-        #############################################################
         # Main Loop
         #############################################################
         while self.alive:
@@ -385,8 +371,10 @@ class SmartHome():
             except Exception as e:
                 self.logger.exception("Connection polling failed: {}".format(e))
 
-    def append_child(self, child):
+    def append_child(self, child,name):
         self.__children.append(child)
+        # add top level itemst to SmartHome object.
+        vars(self)[name] = child
 
     def stop(self, signum=None, frame=None):
         self.alive = False

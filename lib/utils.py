@@ -176,7 +176,7 @@ class Utils(object):
             return False
 
     @staticmethod
-    def to_bool(value):
+    def to_bool(value, default='exception'):
         """
         Converts a value to boolean. 
         Raises exception if value is a string and can't be converted.
@@ -185,6 +185,8 @@ class Utils(object):
            False: "", "0", "faLse", "no", "n", "f", "off"
         Non-string values are passed to bool constructor.
         :param value : value to convert
+        :param default: optional, value to return if value can not be parsed,
+        if default is not set this method throws an exception
         :type value: str, object, int, ...
         :return: True if cant be converted and is true, False otherwise.
         :rtype: bool
@@ -195,7 +197,10 @@ class Utils(object):
                 return True
             if value.lower() in ("no",  "n", "false", "f", "0", "off", ""):
                 return False
-            raise Exception('Invalid value for boolean conversion: ' + value)
+            if default=='exception':
+                raise Exception('Invalid value for boolean conversion: ' + value)
+            else:
+                return default
         return bool(value)
 
     @staticmethod

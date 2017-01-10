@@ -3,6 +3,7 @@ import common
 import unittest
 import lib.plugin
 import lib.item
+import lib.itembuilder
 from lib.model.smartplugin import SmartPlugin
 import threading
 
@@ -17,19 +18,8 @@ class TestConfig(unittest.TestCase):
         item_conf = None
         item_conf = lib.config.parse(common.BASE + "/tests/resources/item_items.conf", item_conf)
 #        print(item_conf.items())
-        for attr, value in item_conf.items():
-            if isinstance(value, dict):
-                child_path = attr
-                try:
-                    child = lib.item.Item(sh, sh, child_path, value)
-                except Exception as e:
-                    self.logger.error("Item {}: problem creating: ()".format(child_path, e))
-                else:
-                    #vars(sh)[attr] = child
-                    sh.add_item(child_path, child)
-                    sh.children.append(child)
-       
-        if 0: self.dump_items(sh)
+        sh.build_items(item_conf)
+        if False: self.dump_items(sh)
 
         print()
         it = sh.return_item("item_tree.grandparent.parent.my_item")
@@ -82,22 +72,13 @@ class TestConfig(unittest.TestCase):
     def testItemCasts(self):
         pass
     def testItemJsonDump(self):
+        import lib.itembuilder
         sh = MockSmartHome()
 
         # load items
         item_conf = None
         item_conf = lib.config.parse(common.BASE + "/tests/resources/item_dumps.yaml", item_conf)
-        for attr, value in item_conf.items():
-            if isinstance(value, dict):
-                child_path = attr
-                try:
-                    child = lib.item.Item(sh, sh, child_path, value)
-                except Exception as e:
-                    self.logger.error("Item {}: problem creating: ()".format(child_path, e))
-                else:
-                    # vars(sh)[attr] = child
-                    sh.add_item(child_path, child)
-                    sh.children.append(child)
+        sh.build_items(item_conf)
 
       #  if 1: self.dump_items(sh)
         #print(item_conf)
@@ -110,7 +91,15 @@ class TestConfig(unittest.TestCase):
 
 
 class MockSmartHome():
-    
+    _sh = None
+    __children = []
+    def __init__(self):
+        self._sh = self
+    def build_items(self,item_conf):
+        ib = lib.itembuilder.ItemBuilder(self)
+        ib.build_itemtree(item_conf, self)
+        _children, self.__item_dict, self.__items = ib.get_items()
+        ib.run_items()
     class MockScheduler():
         def add(self, name, obj, prio=3, cron=None, cycle=None, value=None, offset=None, next=None): 
             print(name) 
@@ -122,8 +111,10 @@ class MockSmartHome():
     __logs = {}
     __item_dict = {}
     __items = []
-    children = []
+    __children = []
     _plugins = []
+
+
     scheduler = MockScheduler()
     def add_log(self, name, log):
         self.__logs[name] = log
@@ -142,7 +133,14 @@ class MockSmartHome():
             yield self.__item_dict[item]
     def return_plugins(self):
         for plugin in self._plugins:
-            yield plugin   
+            yield plugin
+    def now(self):
+        import datetime
+        return datetime.datetime.now()
+    def append_child(self, child,name):
+        self.__children.append(child)
+        # add top level itemst to SmartHome object.
+        vars(self)[name] = child
 if __name__ == '__main__':
     unittest.main(verbosity=2)
 

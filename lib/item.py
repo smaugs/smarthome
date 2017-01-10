@@ -27,6 +27,7 @@ import pickle
 import threading
 import math
 import json
+import lib.utils
 
 from lib.constants import (ITEM_DEFAULTS, FOO, KEY_ENFORCE_UPDATES, KEY_CACHE, KEY_CYCLE, KEY_CRONTAB, KEY_EVAL,
                            KEY_EVAL_TRIGGER, KEY_NAME,KEY_TYPE, KEY_VALUE, PLUGIN_PARSE_ITEM,
@@ -68,6 +69,7 @@ def _cast_foo(value):
 # TODO: Candidate for Utils.to_bool()
 # write testcase and replace
 def _cast_bool(value):
+    #return lib.utils.Utils.to_bool(value)
     if type(value) in [bool, int, float]:
         if value in [False, 0]:
             return False
@@ -148,55 +150,183 @@ def _fadejob(item, dest, step, delta):
         item._fading = False
         item(dest, 'Fader')
 
-class ItemParser():
-    def __init__(self):
-        pass
-
 #####################################################################
 # Item Class
 #####################################################################
 
-
 class Item():
 
-    def __init__(self, smarthome, parent, path, config):
-        
-        self._autotimer = False
-        self._cache = False
+    def __init__(self, itembuilder, parent, path, config):
+        self._sh = itembuilder._sh
+
+        # Path / ID
+        self._path = path
+
+        #Item name, uses path if not set in config
+        self._name = path
+
+        #Item type and cast method
+        self._type = None
         self.cast = _cast_bool
-        self.__changed_by = 'Init:None'
-        self.__children = []
+
+        # value
+        self._value = None
+
         self.conf = {}
+
+        # use cache
+        self._cache = False
+
+        # Object references to parend and children
+        self.__parent = parent
+        self.__children = []
+
+        # references to other Items, Logic and other methods
+        self._items_to_trigger = []
+        self.__logics_to_trigger = []
+        self.__methods_to_trigger = []
+
+        #history
+        # TODO: create history Arrays for some values (value, last_change, last_update  (usage: multiklick,...)
+        # self.__history = [None, None, None, None, None]
+        #
+        #def getValue(num):
+        #    return (str(self.__history[(num - 1)]))
+        #
+        #def addValue(avalue):
+        #    self.__history.append(avalue)
+        #    if len(self.__history) > 5:
+        #        self.__history.pop(0)
+        #
+
+        now = self._sh.now()
+        self.__changed_by = 'Init:None'
+        self.__last_change = now
+        self.__prev_change = now
+        self.__last_update = now
+
+        #Feature
+        self._autotimer = False
         self._crontab = None
         self._cycle = None
+
         self._enforce_updates = False
+
+        #eval, called on change of trigger
         self._eval = None
         self._eval_trigger = False
+
+        # new feature
+        # TODO: change to on_get, on_set
         self._trigger = None
         self._trigger_condition = None
+
         self._fading = False
-        self._items_to_trigger = []
-        now = smarthome.now()
-        self.__last_change = now
-        self.__last_update = now
-        self._lock = threading.Condition()
-        self.__logics_to_trigger = []
-        self._name = path
-        self.__prev_change = now
-        self.__methods_to_trigger = []
-        self.__parent = parent
-        self._path = path
-        self._sh = smarthome._sh
+
         self._threshold = False
-        self._type = None
-        self._value = None
+        # internal use
+        self._lock = threading.Condition()
+
+        # self._change_logger is used in Item
         if hasattr(self._sh, '_item_change_log'):
             self._change_logger = logger.info
         else:
             self._change_logger = logger.debug
-        #############################################################
+
+        # FIXME: moved to ItemBuilder
         # Item Attributes
-        #############################################################
+        #if False: self.fill_attribs(config)
+
+        # FIXME: moved to ItemBuilder
+        # Child Items
+        # if False:
+        #     for attr, value in config.items():
+        #         if isinstance(value, dict):
+        #             child_path = self._path + '.' + attr
+        #             try:
+        #                 child = Item(itembuilder, self, child_path, value)
+        #             except Exception as e:
+        #                 logger.exception("Item {}: problem creating: {}".format(child_path, e))
+        #             else:
+        #                 vars(self)[attr] = child
+        #                 itembuilder.add_item(child_path, child)
+        #                 self.__children.append(child)
+        #
+        #FIXME: moved to ItemBuilder
+        #  Cache
+        #if False:self.read_cache()
+
+        # FIXME:moved to self.fill_attribs()
+        # Type
+        # if False:
+        #     self._set_type(self._type)
+        #     # Value
+        #     if self._value is None:
+        #         self._value = ITEM_DEFAULTS[self._type]
+        #     try:
+        #         self._value = self.cast(self._value)
+        #     except:
+        #         logger.error("Item {}: value {} does not match type {}.".format(self._path, self._value, self._type))
+        #         raise
+        #     self.__prev_value = self._value
+
+
+        # FIXME: moved to init_run
+        #  Crontab/Cycle
+        # #############################################################
+        # if self._crontab is not None or self._cycle is not None:
+        #     self._sh.scheduler.add(self._path, self, cron=self._crontab, cycle=self._cycle)
+
+        #
+        # FIXME: moved to
+        # Plugins
+        #self.register_item_to_plugins()
+
+
+    def _init_cache(self):
+        if self._cache:
+            if not os.path.isfile(self._cache):
+                _cache_write(self._cache, self._value)
+                logger.warning("Item {}: Created cache for item: {}".format(self._cache, self._cache))
+
+    def append_child(self, child,name):
+        self.__children.append(child)
+        vars(self)[name] = child
+
+    def _set_type(self,atype):
+        #logger.debug("### _SET_TYPE {} = {}->{}".format(self._path, type(self._type), atype))
+        # __defaults = {'num': 0, 'str': '', 'bool': False, 'list': [], 'dict': {}, 'foo': None, 'scene': 0}
+        if atype is None:
+            atype = FOO
+        if atype not in ITEM_DEFAULTS:
+            logger.error("Item {}: type '{}' unknown. Please use one of: {}.".format(self._path, atype, ', '.join(
+                list(ITEM_DEFAULTS.keys()))))
+            raise AttributeError
+        self.cast = globals()['_cast_' + atype]
+        self._type = atype
+
+    def register_item_to_plugins(self):
+
+        for plugin in self._sh.return_plugins():
+            if hasattr(plugin, PLUGIN_PARSE_ITEM):
+                update = plugin.parse_item(self)
+                if update:
+                    self.add_method_trigger(update)
+
+    def read_cache(self):
+        logger.debug("### read_cache {}".format(self._path))
+
+        if self._cache:
+            self._cache = self._sh._cache_dir + self._path
+            try:
+                self.__last_change, self._value = _cache_read(self._cache, self._sh._tzinfo)
+                self.__last_update = self.__last_change
+                self.__changed_by = 'Cache:None'
+            except Exception as e:
+                logger.warning("Item {}: problem reading cache: {}".format(self._path, e))
+
+    def fill_attribs(self, config):
+        logger.debug("### fill_attribs {}".format(self._path))
         for attr, value in config.items():
             if not isinstance(value, dict):
                 if attr in [KEY_CYCLE, KEY_NAME, KEY_TYPE, KEY_VALUE]:
@@ -204,8 +334,8 @@ class Item():
                 elif attr in [KEY_EVAL]:
                     value = self.get_stringwithabsolutepathes(value, 'sh.', '(', KEY_EVAL)
                     setattr(self, '_' + attr, value)
-                elif attr in ['trigger','trigger_condition']:
-                    setattr(self,'_'+attr,value)
+                elif attr in ['trigger', 'trigger_condition']:
+                    setattr(self, '_' + attr, value)
                 elif attr in [KEY_CACHE, KEY_ENFORCE_UPDATES]:  # cast to bool
                     try:
                         setattr(self, '_' + attr, _cast_bool(value))
@@ -235,78 +365,27 @@ class Item():
                     self.__th_crossed = False
                     self.__th_low = float(low.strip())
                     self.__th_high = float(high.strip())
-                    logger.debug("Item {}: set threshold => low: {} high: {}".format(self._path, self.__th_low, self.__th_high))
+                    logger.debug(
+                        "Item {}: set threshold => low: {} high: {}".format(self._path, self.__th_low, self.__th_high))
                 else:
                     self.conf[attr] = value
-        #############################################################
-        # Child Items
-        #############################################################
-        for attr, value in config.items():
-            if isinstance(value, dict):
-                child_path = self._path + '.' + attr
-                try:
-                    child = Item(smarthome, self, child_path, value)
-                except Exception as e:
-                    logger.exception("Item {}: problem creating: {}".format(child_path, e))
-                else:
-                    vars(self)[attr] = child
-                    smarthome.add_item(child_path, child)
-                    self.__children.append(child)
-        #############################################################
-        # Cache
-        #############################################################
-        if self._cache:
-            self._cache = self._sh._cache_dir + self._path
-            try:
-                self.__last_change, self._value = _cache_read(self._cache, self._sh._tzinfo)
-                self.__last_update = self.__last_change
-                self.__changed_by = 'Cache:None'
-            except Exception as e:
-                logger.warning("Item {}: problem reading cache: {}".format(self._path, e))
-        #############################################################
-        # Type
-        #############################################################
-        #__defaults = {'num': 0, 'str': '', 'bool': False, 'list': [], 'dict': {}, 'foo': None, 'scene': 0}
-        if self._type is None:
-#            logger.debug("Item {}: no type specified.".format(self._path))
-#            return
-            self._type = FOO  # MSinn
-        if self._type not in ITEM_DEFAULTS:
-            logger.error("Item {}: type '{}' unknown. Please use one of: {}.".format(self._path, self._type, ', '.join(list(ITEM_DEFAULTS.keys()))))
-            raise AttributeError
-        self.cast = globals()['_cast_' + self._type]
-        #############################################################
-        # Value
-        #############################################################
+
+        # set type and cast method
+        self._set_type(self._type)
+
+        # set default value
         if self._value is None:
             self._value = ITEM_DEFAULTS[self._type]
+        # cast value to Item.type
         try:
             self._value = self.cast(self._value)
         except:
             logger.error("Item {}: value {} does not match type {}.".format(self._path, self._value, self._type))
             raise
         self.__prev_value = self._value
-        #############################################################
-        # Cache write/init
-        #############################################################
-        if self._cache:
-            if not os.path.isfile(self._cache):
-                _cache_write(self._cache, self._value)
-                logger.warning("Item {}: Created cache for item: {}".format(self._cache, self._cache))
-        #############################################################
-        # Crontab/Cycle
-        #############################################################
-        if self._crontab is not None or self._cycle is not None:
-            self._sh.scheduler.add(self._path, self, cron=self._crontab, cycle=self._cycle)
-        #############################################################
-        # Plugins
-        #############################################################
-        for plugin in self._sh.return_plugins():
-            if hasattr(plugin, PLUGIN_PARSE_ITEM):
-                update = plugin.parse_item(self)
-                if update:
-                    self.add_method_trigger(update)
 
+        # Cache init (create a new cache file)
+        self._init_cache()
 
     def expand_relativepathes(self, attr, begintag, endtag):
         """
@@ -428,6 +507,8 @@ class Item():
         return "Item: {}".format(self._path)
 
     def _init_prerun(self):
+
+        self.register_item_to_plugins()
         if self._eval_trigger:
             _items = []
             for trigger in self._eval_trigger:
@@ -451,6 +532,11 @@ class Item():
                     self._eval = 'min({0})'.format(','.join(items))
 
     def _init_run(self):
+        # Crontab/Cycle
+        #############################################################
+        if self._crontab is not None or self._cycle is not None:
+            self._sh.scheduler.add(self._path, self, cron=self._crontab, cycle=self._cycle)
+
         if self._eval_trigger:
             if self._eval:
                 self._sh.trigger(name=self._path, obj=self.__run_eval, by='Init', value={'value': self._value, 'caller': 'Init'})
@@ -642,12 +728,12 @@ class Item():
     def type(self):
         return self._type
 
-    def get_children_path(self):
+    def __get_children_path(self):
         return [item._path
                 for item in self.__children]
     def toggle(self):
         """
-        
+        toggle boolean value of item
         """
         if self._type == 'bool':
             self(not self._value)
@@ -662,7 +748,7 @@ class Item():
                  "value" : self._value,
                  "type": self._type,
                  "attributes": self.conf,
-                 "children": self.get_children_path() }
+                 "children": self.__get_children_path() }
 # alternative method to get all class members
 #    @staticmethod
 #    def get_members(instance):
