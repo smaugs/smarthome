@@ -75,6 +75,8 @@ import lib.tools
 import lib.utils
 import lib.orb
 
+from lib.itembuilder import ItemBuilder
+
 #####################################################################
 # Globals
 #####################################################################
@@ -107,6 +109,7 @@ class LogHandler(logging.StreamHandler):
         self._log.add([timestamp, record.threadName, record.levelname, record.message])
 
 
+
 class SmartHome():
 
     base_dir = BASE
@@ -131,9 +134,11 @@ class SmartHome():
     __event_listeners = {}
     __all_listeners = []
     _plugins = []
-    __items = []
-    __children = []
-    __item_dict = {}
+
+    __items = [] # all item paths as string ['env.core.version','env.core.start','env.core.memory',.... ]
+    __children = [] # all top items as object [Item:env, Item: env_init, Item:env_daily, ....]
+    __item_dict = {} # dictionary with all item paths and objects  {'env.system.name':Item:env.system.name, 'test.item1':Item: test.item1, .....}
+
     _utctz = TZ
     _dbapis = {}
     logger = logging.getLogger(__name__)
@@ -305,24 +310,46 @@ class SmartHome():
 #                except Exception as e:
 #                    self.logger.exception("Problem reading {0}: {1}".format(item_file, e))
 #                    continue
-        for attr, value in item_conf.items():
-            if isinstance(value, dict):
-                child_path = attr
-                try:
-                    child = lib.item.Item(self, self, child_path, value)
-                except Exception as e:
-                    self.logger.error("Item {}: problem creating: ()".format(child_path, e))
-                else:
-                    vars(self)[attr] = child
-                    self.add_item(child_path, child)
-                    self.__children.append(child)
-        del(item_conf)  # clean up
-        for item in self.return_items():
-            item._init_prerun()
-        for item in self.return_items():
-            item._init_run()
+
+        #############################refactor
+        #FIXME : remove old_impl
+        old_impl= False
+        if old_impl:
+            for attr, value in item_conf.items():
+                if isinstance(value, dict):
+                    child_path = attr
+                    try:
+                        child = lib.item.Item(self, self, child_path, value)
+                    except Exception as e:
+                        self.logger.error("Item {}: problem creating: ()".format(child_path, e))
+                    else:
+                        vars(self)[attr] = child
+                        self.add_item(child_path, child)
+                        self.append_child(child)
+            del (item_conf)  # clean up
+            for item in self.return_items():
+                item._init_prerun()
+            for item in self.return_items():
+                item._init_run()
+        else:
+        ######################refactor###################################
+            ib = ItemBuilder(self)
+            self.__children, self.__item_dict, self.__items =  ib.build_itemtree(item_conf)
+
+            del (item_conf)  # clean up
+            # add top level itemst to SmartHome object.
+            for item in self.__children:
+                vars(self)[item._name] = item
+            # add top level itemst to SmartHome object.
+            for item in self.return_items():
+                item._init_prerun()
+            for item in self.return_items():
+                item._init_run()
+
+        ###########################refactor
         self.item_count = len(self.__items)
         self.logger.info("Items: {}".format(self.item_count))
+        self.logger.info(self.__items)
 
         #############################################################
         # Init Logics
@@ -357,6 +384,9 @@ class SmartHome():
                 self.connections.poll()
             except Exception as e:
                 self.logger.exception("Connection polling failed: {}".format(e))
+
+    def append_child(self, child):
+        self.__children.append(child)
 
     def stop(self, signum=None, frame=None):
         self.alive = False

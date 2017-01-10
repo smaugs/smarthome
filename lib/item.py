@@ -186,11 +186,11 @@ class Item():
         self.__methods_to_trigger = []
         self.__parent = parent
         self._path = path
-        self._sh = smarthome
+        self._sh = smarthome._sh
         self._threshold = False
         self._type = None
         self._value = None
-        if hasattr(smarthome, '_item_change_log'):
+        if hasattr(self._sh, '_item_change_log'):
             self._change_logger = logger.info
         else:
             self._change_logger = logger.debug
