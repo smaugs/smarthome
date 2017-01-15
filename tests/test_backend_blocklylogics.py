@@ -7,6 +7,7 @@ import lib.item
 import lib.itembuilder
 from plugins.backend import Backend as Root
 from tests.backend.cptestcase import BaseCherryPyTestCase
+from tests.mock.core import MockSmartHome
 
 
 
@@ -158,6 +159,13 @@ class MockSmartHome():
 class MockBackendServer():
     _sh = MockSmartHome()
 
+    def __init__(self):
+        self._sh.with_items_from(common.BASE + "/tests/resources/blockly_items.conf")
+
+        # HACK: Make tests work! Backend accesses private field _logic_dir
+        # directly instead of using a method (the field was remove in the
+        # meantime). Setting this just to make it work again.
+        self._sh._logic_dir = common.BASE + "/tests/resources/"
 
 
 if __name__ == '__main__':
