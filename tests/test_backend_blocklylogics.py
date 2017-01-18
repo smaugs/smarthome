@@ -4,11 +4,10 @@ import cherrypy
 from bs4 import BeautifulSoup
 
 import lib.item
-import lib.itembuilder
+
 from plugins.backend import Backend as Root
 from tests.backend.cptestcase import BaseCherryPyTestCase
 from tests.mock.core import MockSmartHome
-
 
 
 def setUpModule():
