@@ -21,7 +21,7 @@ miflora >=  0.1.13
 minimalmodbus>=0.7
 
 # SmartHomeNG Core
-psutil
+psutil>=5.0
 
 # systemair
 pyserial>=3.0.1
