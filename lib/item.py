@@ -156,8 +156,8 @@ def _fadejob(item, dest, step, delta):
 
 class Item():
 
-    def __init__(self, itembuilder, parent, path, config):
-        self._sh = itembuilder._sh
+    def __init__(self, sh, parent, path, config):
+        self._sh = sh
 
         # Path / ID
         self._path = path
@@ -212,18 +212,14 @@ class Item():
 
         self._enforce_updates = False
 
-        #eval, called on change of trigger
+        #eval, called when the eval_trigger change
         self._eval = None
         self._eval_trigger = False
-
-        # new feature
-        # TODO: change to on_get, on_set
-        self._trigger = None
-        self._trigger_condition = None
 
         self._fading = False
 
         self._threshold = False
+
         # internal use
         self._lock = threading.Condition()
 
@@ -232,56 +228,6 @@ class Item():
             self._change_logger = logger.info
         else:
             self._change_logger = logger.debug
-
-        # FIXME: moved to ItemBuilder
-        # Item Attributes
-        #if False: self.fill_attribs(config)
-
-        # FIXME: moved to ItemBuilder
-        # Child Items
-        # if False:
-        #     for attr, value in config.items():
-        #         if isinstance(value, dict):
-        #             child_path = self._path + '.' + attr
-        #             try:
-        #                 child = Item(itembuilder, self, child_path, value)
-        #             except Exception as e:
-        #                 logger.exception("Item {}: problem creating: {}".format(child_path, e))
-        #             else:
-        #                 vars(self)[attr] = child
-        #                 itembuilder.add_item(child_path, child)
-        #                 self.__children.append(child)
-        #
-        #FIXME: moved to ItemBuilder
-        #  Cache
-        #if False:self.read_cache()
-
-        # FIXME:moved to self.fill_attribs()
-        # Type
-        # if False:
-        #     self._set_type(self._type)
-        #     # Value
-        #     if self._value is None:
-        #         self._value = ITEM_DEFAULTS[self._type]
-        #     try:
-        #         self._value = self.cast(self._value)
-        #     except:
-        #         logger.error("Item {}: value {} does not match type {}.".format(self._path, self._value, self._type))
-        #         raise
-        #     self.__prev_value = self._value
-
-
-        # FIXME: moved to init_run
-        #  Crontab/Cycle
-        # #############################################################
-        # if self._crontab is not None or self._cycle is not None:
-        #     self._sh.scheduler.add(self._path, self, cron=self._crontab, cycle=self._cycle)
-
-        #
-        # FIXME: moved to
-        # Plugins
-        #self.register_item_to_plugins()
-
 
     def _init_cache(self):
         if self._cache:
@@ -294,8 +240,6 @@ class Item():
         vars(self)[name] = child
 
     def _set_type(self,atype):
-        #logger.debug("### _SET_TYPE {} = {}->{}".format(self._path, type(self._type), atype))
-        # __defaults = {'num': 0, 'str': '', 'bool': False, 'list': [], 'dict': {}, 'foo': None, 'scene': 0}
         if atype is None:
             atype = FOO
         if atype not in ITEM_DEFAULTS:
@@ -306,7 +250,6 @@ class Item():
         self._type = atype
 
     def register_item_to_plugins(self):
-
         for plugin in self._sh.return_plugins():
             if hasattr(plugin, PLUGIN_PARSE_ITEM):
                 update = plugin.parse_item(self)
@@ -314,8 +257,6 @@ class Item():
                     self.add_method_trigger(update)
 
     def read_cache(self):
-        logger.debug("### read_cache {}".format(self._path))
-
         if self._cache:
             self._cache = self._sh._cache_dir + self._path
             try:
@@ -326,7 +267,6 @@ class Item():
                 logger.warning("Item {}: problem reading cache: {}".format(self._path, e))
 
     def fill_attribs(self, config):
-        logger.debug("### fill_attribs {}".format(self._path))
         for attr, value in config.items():
             if not isinstance(value, dict):
                 if attr in [KEY_CYCLE, KEY_NAME, KEY_TYPE, KEY_VALUE]:
@@ -467,18 +407,11 @@ class Item():
                 rootpath += '.' + relpath
             else:
                 rootpath = relpath
-        logger.info("{}.get_absolutepath('{}'): Result = '{}' (for attribute '{}')".format(self._path, relativepath, rootpath, attribute))
+        logger.debug("{}.get_absolutepath('{}'): Result = '{}' (for attribute '{}')".format(self._path, relativepath, rootpath, attribute))
         return rootpath
     
 
     def __call__(self, value=None, caller='Logic', source=None, dest=None):
-        if self._trigger_condition is not None and self._trigger_condition =='get':
-            sh = self._sh  # noqa
-            try:
-                eval(self._trigger)
-            except Exception as e:
-                logger.info("can't call trigger on get: {}".format(e))
-
         if value is None or self._type is None:
             return self._value
         if self._eval:
@@ -507,7 +440,6 @@ class Item():
         return "Item: {}".format(self._path)
 
     def _init_prerun(self):
-
         self.register_item_to_plugins()
         if self._eval_trigger:
             _items = []
@@ -550,7 +482,7 @@ class Item():
                 logger.warning("Item {}: problem evaluating {}: {}".format(self._path, self._eval, e))
             else:
                 if value is None:
-                    logger.info("Item {}: evaluating {} returns None".format(self._path, self._eval))
+                    logger.warning("Item {}: evaluating {} returns None".format(self._path, self._eval))
                 else:
                     self.__update(value, caller, source, dest)
 
@@ -582,7 +514,6 @@ class Item():
                 self._change_logger("Item {} = {} via {} {} {}".format(self._path, value, caller, source, dest))
         self._lock.release()
         if _changed or self._enforce_updates or self._type == 'scene':
-#            self.__prev_update = self.__last_update #Multiclick
             self.__last_update = self._sh.now()
             for method in self.__methods_to_trigger:
                 try:
@@ -609,8 +540,6 @@ class Item():
         if self._autotimer and caller != 'Autotimer' and not self._fading:
             _time, _value = self._autotimer
             self.timer(_time, _value, True)
-        if self._trigger:
-            logger.debug("item trigger called")
 
     def add_logic_trigger(self, logic):
         self.__logics_to_trigger.append(logic)
@@ -655,11 +584,6 @@ class Item():
 
     def last_update(self):
         return self.__last_update
-
-    #Multiclick
-#    def prev_update_age(self):
-#        delta = self.__last_update - self.__prev_update
-#        return delta.total_seconds()
 
     def prev_age(self):
         delta = self.__last_change - self.__prev_change

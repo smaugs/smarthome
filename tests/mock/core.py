@@ -43,21 +43,9 @@ class MockSmartHome():
         item_conf = lib.config.parse(conf, None)
         ib = lib.itembuilder.ItemBuilder(self)
         ib.build_itemtree(item_conf,self)
-        _children, self.__item_dict, self.__items = ib.get_items()
+        self.__item_dict, self.__items = ib.get_items()
         ib.run_items()
-        #for item in self.__children:
-         #   vars(self)[item._name] = item
-        # for attr, value in item_conf.items():
-        #     if isinstance(value, dict):
-        #         child_path = attr
-        #         try:
-        #             child = lib.item.Item(self, self, child_path, value)
-        #         except Exception as e:
-        #             print("Item {}: problem creating: {}".format(child_path, e))
-        #         else:
-        #             vars(self)[attr] = child
-        #             self.add_item(child_path, child)
-        #             self.children.append(child)
+
         return item_conf
 
     def add_log(self, name, log):

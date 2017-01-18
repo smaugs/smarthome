@@ -4,9 +4,10 @@ import cherrypy
 from bs4 import BeautifulSoup
 
 import lib.item
-
+import lib.itembuilder
 from plugins.backend import Backend as Root
 from tests.backend.cptestcase import BaseCherryPyTestCase
+
 
 
 def setUpModule():
@@ -81,20 +82,18 @@ class TestCherryPyApp(BaseCherryPyTestCase):
 
 class MockSmartHome():
 
-    # class MockScheduler():
-    #     def add(self, name, obj, prio=3, cron=None, cycle=None, value=None, offset=None, next=None):
-    #         print(name)
-    #         if isinstance(obj.__self__, SmartPlugin):
-    #             name = name +'_'+ obj.__self__.get_instance_name()
-    #         print(name)
-    #         print( obj)
-    #         print(obj.__self__.get_instance_name())
-    # __logs = {}
+    class MockScheduler():
+        def add(self, name, obj, prio=3, cron=None, cycle=None, value=None, offset=None, next=None):
+            print(name)
+            print( obj)
+            print(obj.__self__.get_instance_name())
+            # __logs = {}
+    _sh = None
     __item_dict = {}
     __items = []
     __children = []
     _plugins = []
-    # scheduler = MockScheduler()
+    scheduler = MockScheduler()
     base_dir = common.BASE
     _logic_dir = base_dir + "/tests/resources/"
 
@@ -104,17 +103,23 @@ class MockSmartHome():
         #############################################################
         # Init Items
         #############################################################
+        self._sh = self
         item_conf = None
         item_conf = lib.config.parse("resources/blockly_items.conf", item_conf)
 
-        for attr, value in item_conf.items():
-            if isinstance(value, dict):
-                child_path = attr
-                child = lib.item.Item(self, self, child_path, value)
-                vars(self)[attr] = child
-                self.add_item(child_path, child)
-                self.__children.append(child)
-        # del(item_conf)  # clean up
+        ib = lib.itembuilder.ItemBuilder(self)
+        ib.build_itemtree(item_conf, self)
+        self.__item_dict, self.__items = ib.get_items()
+        ib.run_items()
+
+        # for attr, value in item_conf.items():
+        #     if isinstance(value, dict):
+        #         child_path = attr
+        #         child = lib.item.Item(self, self, child_path, value)
+        #         vars(self)[attr] = child
+        #         self.add_item(child_path, child)
+        #         self.__children.append(child)
+        # # del(item_conf)  # clean up
         # for item in self.return_items():
         #     item._init_prerun()
         # for item in self.return_items():
@@ -145,7 +150,10 @@ class MockSmartHome():
     def return_plugins(self):
         for plugin in self._plugins:
             yield plugin
-
+    def append_child(self, child,name):
+        self.__children.append(child)
+        # add top level itemst to SmartHome object.
+        vars(self)[name] = child
 
 class MockBackendServer():
     _sh = MockSmartHome()

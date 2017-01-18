@@ -290,63 +290,20 @@ class SmartHome():
         self.logger.info("Init Plugins")
         self._plugins = lib.plugin.Plugins(self, configfile=self._plugin_conf_basename)
 
-        #############################################################
-        # Init Items
-        #############################################################
+        # Load Items
         self.logger.info("Init Items")
         item_conf = None
-#        for item_file in sorted(os.listdir(self._env_dir)):
-#            if item_file.endswith('.conf') or item_file.endswith('.yaml'):
-#                try:
-#                    item_conf = lib.config.parse(self._env_dir + item_file, item_conf)
-#                except Exception as e:
-#                    self.logger.exception("Problem reading {0}: {1}".format(item_file, e))
         item_conf = lib.config.parse_itemsdir(self._env_dir, item_conf)
         item_conf = lib.config.parse_itemsdir(self._items_dir, item_conf)
-#        for item_file in sorted(os.listdir(self._items_dir)):
-#            if item_file.endswith('.conf') or item_file.endswith('.yaml'):
-#                try:
-#                    item_conf = lib.config.parse(self._items_dir + item_file, item_conf)
-#                except Exception as e:
-#                    self.logger.exception("Problem reading {0}: {1}".format(item_file, e))
-#                    continue
 
-        #############################refactor
-        #FIXME : remove old_impl
-        # old_impl= False
-        # if old_impl:
-        #     for attr, value in item_conf.items():
-        #         if isinstance(value, dict):
-        #             child_path = attr
-        #             try:
-        #                 child = lib.item.Item(self, self, child_path, value)
-        #             except Exception as e:
-        #                 self.logger.error("Item {}: problem creating: ()".format(child_path, e))
-        #             else:
-        #                 vars(self)[attr] = child
-        #                 self.add_item(child_path, child)
-        #                 self.append_child(child)
-        #     del (item_conf)  # clean up
-        #     for item in self.return_items():
-        #         item._init_prerun()
-        #     for item in self.return_items():
-        #         item._init_run()
-        #
-        # ######################refactor###################################
         ib = ItemBuilder(self)
         ib.build_itemtree(item_conf, self)
-        children2, self.__item_dict, self.__items =  ib.get_items()
+        self.__item_dict, self.__items =  ib.get_items()
 
         del (item_conf)  # clean up
 
+        # Init Items
         ib.run_items()
-
-        ###########################refactor
-        self.item_count = len(self.__items)
-        self.logger.info("Items: {}".format(self.item_count))
-        self.logger.info(self.__items)
-        if self.item_count != 59:
-            raise
 
         # Init Logics
         self._logics = lib.logic.Logics(self, self._logic_conf_basename, self._env_logic_conf_basename)
