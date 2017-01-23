@@ -157,6 +157,7 @@ def _fadejob(item, dest, step, delta):
 class Item():
 
     def __init__(self, sh, parent, path, config):
+        self.logger = logging.getLogger(__name__)
         self._sh = sh
 
         # Path / ID
@@ -176,6 +177,7 @@ class Item():
 
         # use cache
         self._cache = False
+        self._cache_file = None
 
         # Object references to parend and children
         self.__parent = parent
@@ -231,9 +233,10 @@ class Item():
 
     def _init_cache(self):
         if self._cache:
-            if not os.path.isfile(self._cache):
-                _cache_write(self._cache, self._value)
-                logger.warning("Item {}: Created cache for item: {}".format(self._cache, self._cache))
+            self._cache_file = self._sh._cache_dir + self._path
+            if not os.path.isfile(self._cache_file):
+                _cache_write(self._cache_file, self._value)
+                self.logger.warning("Created cache for item: {}".format(self._path))
 
     def append_child(self, child,name):
         self.__children.append(child)
@@ -258,9 +261,8 @@ class Item():
 
     def read_cache(self):
         if self._cache:
-            self._cache = self._sh._cache_dir + self._path
             try:
-                self.__last_change, self._value = _cache_read(self._cache, self._sh._tzinfo)
+                self.__last_change, self._value = _cache_read(self._cache_file, self._sh._tzinfo)
                 self.__last_update = self.__last_change
                 self.__changed_by = 'Cache:None'
             except Exception as e:
@@ -325,6 +327,7 @@ class Item():
         self.__prev_value = self._value
 
         # Cache init (create a new cache file)
+
         self._init_cache()
 
     def expand_relativepathes(self, attr, begintag, endtag):
@@ -534,7 +537,7 @@ class Item():
                 self._sh.trigger(name=item.id(), obj=item.__run_eval, value=args, by=caller, source=source, dest=dest)
         if _changed and self._cache and not self._fading:
             try:
-                _cache_write(self._cache, self._value)
+                _cache_write(self._cache_file, self._value)
             except Exception as e:
                 logger.warning("Item: {}: could update cache {}".format(self._path, e))
         if self._autotimer and caller != 'Autotimer' and not self._fading:
