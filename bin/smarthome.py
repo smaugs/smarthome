@@ -39,7 +39,6 @@ import locale
 import logging
 import logging.handlers
 import logging.config
-import yaml
 import os
 import re
 import signal
@@ -74,6 +73,7 @@ import lib.scheduler
 import lib.tools
 import lib.utils
 import lib.orb
+import lib.shyaml
 
 from lib.itembuilder import ItemBuilder
 
@@ -188,6 +188,9 @@ class SmartHome():
                     vars(self)['_' + attr] = config[attr]
             del(config)  # clean up
 
+        if hasattr(self, '_module_paths'):
+            sys.path.extend(self._module_paths if type(self._module_paths) is list else [self._module_paths])
+
         #############################################################
         # Database APIs
         #############################################################
@@ -245,7 +248,7 @@ class SmartHome():
 
     def initLogging(self):
         fo = open(self._log_config, 'r') 
-        doc = yaml.load(fo)
+        doc = lib.shyaml.yaml_load(self._log_config, False)
         logging.config.dictConfig(doc)
         fo.close()
         if MODE == 'interactive':  # remove default stream handler
@@ -304,6 +307,8 @@ class SmartHome():
 
         # Init Items
         ib.run_items()
+        self.item_count = len(self.__items)
+        self.logger.info("Items: {}".format(self.item_count))
 
         # Init Logics
         self._logics = lib.logic.Logics(self, self._logic_conf_basename, self._env_logic_conf_basename)

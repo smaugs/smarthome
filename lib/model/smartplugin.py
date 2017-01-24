@@ -102,12 +102,11 @@ class SmartPlugin(SmartObject, Utils):
 
     def set_attr_value(self, conf, attr, value):
         """
-            set value for an attribute to item config
+            set value for an attribute in item.config
         """
         __attr = self.__get_iattr_conf(conf, attr)
         if __attr is not None:
             conf[self.__get_iattr(attr)] = value
-
 
     def __new__(cls, *args, **kargs):
         if not hasattr(cls,'PLUGIN_VERSION'):
