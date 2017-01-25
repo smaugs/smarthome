@@ -109,7 +109,7 @@ class Plugins():
         for plugin in self._threads:
             logger.debug('Stopping {} Plugin'.format(plugin.name))
             plugin.stop()
-    
+
     def get_plugin(self, name):
         """
            returns one plugin with given name 

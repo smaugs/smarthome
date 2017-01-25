@@ -300,13 +300,13 @@ class SmartHome():
         item_conf = lib.config.parse_itemsdir(self._items_dir, item_conf)
 
         ib = ItemBuilder(self)
-        ib.build_itemtree(item_conf, self)
-        self.__item_dict, self.__items =  ib.get_items()
+        ib.build_itemtree(item_conf, self, self.__items, self.__item_dict )
+        #self.__item_dict, self.__items =  ib.get_items()
 
-        del (item_conf)  # clean up
+        del item_conf  # clean up
 
         # Init Items
-        ib.run_items()
+        ib.run_items(self.__item_dict)
         self.item_count = len(self.__items)
         self.logger.info("Items: {}".format(self.item_count))
 

@@ -246,9 +246,9 @@ class MockSmartHome():
         self._sh = self
     def build_items(self,item_conf):
         ib = lib.itembuilder.ItemBuilder(self)
-        ib.build_itemtree(item_conf, self)
-        self.__item_dict, self.__items = ib.get_items()
-        ib.run_items()
+        ib.build_itemtree(item_conf, self, self.__items, self.__item_dict)
+
+        ib.run_items(self.__item_dict)
     class MockScheduler():
         def add(self, name, obj, prio=3, cron=None, cycle=None, value=None, offset=None, next=None): 
             print(name) 
