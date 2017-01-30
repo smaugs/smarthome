@@ -15,7 +15,7 @@ ITEM_FILE_TYPE = CONF_FILE
 #ITEM_FILE_TYPE = YAML_FILE
 
 
-class TestConfig(unittest.TestCase):
+class TestItem(unittest.TestCase):
     def props(self,cls):   
         return [i for i in cls.__dict__.keys() if i[:1] != '_']
 
@@ -125,7 +125,7 @@ class TestConfig(unittest.TestCase):
             print("config file '"+conf_filename+"' not found")
 #        print(item_conf.items())
         sh.build_items(item_conf)
-       
+
         if 0: self.dump_items(sh)
 
         # -----------------------------------------------------------------
@@ -217,9 +217,300 @@ class TestConfig(unittest.TestCase):
         self.assertIsNotNone(it)
         self.assertEqual(it._autotimer[3], 'item_tree.timertests.test_item52.wert')
 
+    def test_cast_str(self):
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_str(1))
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_str(["ee","ww"]))
 
-    def testItemCasts(self):
+        str = 'qwe'
+        self.assertEqual(str, lib.item._cast_str(str))
+
+    def test_cast_list(self):
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_list(1))
+        self.assertIsNotNone(lib.item._cast_list([1,2]))
+        with self.assertRaises(ValueError):
+            self.assertIsNotNone(lib.item._cast_list({1, 2}))
+
+    def test_cast_dict(self):
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_dict(1))
+        self.assertIsNotNone(lib.item._cast_dict({1:1, 2:2}))
+        self.assertIsNotNone(lib.item._cast_dict({'1':1 , '2': 2}))
+
+        with self.assertRaises(ValueError):
+            self.assertIsNotNone(lib.item._cast_dict({1, 2}))
+
+    def test_cast_scene(self):
+        self.assertEqual(1, lib.item._cast_scene('1'))
+        self.assertNotEqual(1, lib.item._cast_scene('2'))
+        self.assertEqual(255, lib.item._cast_scene(0xff))
+
+        with self.assertRaises(ValueError):
+            self.assertEqual(255, lib.item._cast_scene(""))
+
+        with self.assertRaises(ValueError):
+            self.assertEqual(1, lib.item._cast_scene('l'))
+
+    def test_cast_num(self):
+        self.assertEqual(0, lib.item._cast_num(''))
+        self.assertEqual(0, lib.item._cast_num(' '))
+        self.assertEqual(1, lib.item._cast_num(' 1 '))
+        self.assertEqual(1, lib.item._cast_num('1'))
+        self.assertEqual(1.2, lib.item._cast_num('1.2'))
+        self.assertEqual(1.2, lib.item._cast_num(1.2))
+        self.assertEqual(1, lib.item._cast_num(int(1.2)))
+        self.assertEqual(1.2, lib.item._cast_num(float(1.2)))
+        with self.assertRaises(ValueError):
+            self.assertEqual(10, lib.item._cast_num(' 0x0a'))
+
+    def test_cast_bool(self):
+        """
+        ['0', 'false', 'no', 'off', '']:
+            return False
+        elif value.lower() in ['1', 'true', 'yes', 'on']:
+        :return:
+        """
+        # true string values
+        self.assertTrue(lib.item._cast_bool('yes'))
+        self.assertTrue(lib.item._cast_bool('true'))
+        self.assertTrue(lib.item._cast_bool('1'))
+        self.assertTrue(lib.item._cast_bool('on'))
+        # true numeric values
+        self.assertTrue(lib.item._cast_bool(1))
+        self.assertTrue(lib.item._cast_bool(int(1)))
+        self.assertTrue(lib.item._cast_bool(float(1)))
+        self.assertTrue(lib.item._cast_bool(bool(1)))
+
+        # exceptions
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_bool(float(99)))
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_bool(2))
+        with self.assertRaises(ValueError):
+            self.assertTrue(lib.item._cast_bool(-2))
+
+        with self.assertRaises(TypeError):
+            self.assertTrue(lib.item._cast_bool([]))
+
+        with self.assertRaises(TypeError):
+            self.assertTrue(lib.item._cast_bool(None))
+
+        #false numeric values
+        self.assertFalse(lib.item._cast_bool(0))
+        self.assertFalse(lib.item._cast_bool(int(0)))
+        self.assertFalse(lib.item._cast_bool(float(0)))
+        self.assertFalse(lib.item._cast_bool(bool(0)))
+        # false string values
+        self.assertFalse(lib.item._cast_bool(""))
+        self.assertFalse(lib.item._cast_bool('no'))
+        self.assertFalse(lib.item._cast_bool('off'))
+        self.assertFalse(lib.item._cast_bool('false'))
+        self.assertFalse(lib.item._cast_bool('0'))
+
+    def test_fadejob(self):
+        #(item, dest, step, delta):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'autotimer': '5m = 42 = compat_1.2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01' )
+        item.fill_attribs(conf)
+        item(10)
+        item._fading = True
+        lib.item._fadejob(item, 0, 5, 1)
+        self.assertEqual(10, item._value)
+        item._fading = False
+        lib.item._fadejob(item,0, 5, 0.1)
+        self.assertEqual(0,item._value)
+
+        lib.item._fadejob(item, 10, 5, 0.1)
+        self.assertEqual(10, item._value)
+
+        lib.item._fadejob(item, 100, 200, 1)
+        self.assertEqual(100, item._value)
+
+    def test_set(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'autotimer': '5m = 42 = compat_1.2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        item.set(12)
+#        print(item.type())
+#        print(item.cast)
+        self.assertEqual(12, item._value)
+
+        item.set('13')
+        self.assertEqual(13, item._value)
+        self.assertIsNone(item.set('qwe'))
+        self.assertEqual(13, item._value)
+        item.set('14')
+
+    def test_cast_duration(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'autotimer': '5m = 42 = compat_1.2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        self.assertEqual(300, item._cast_duration('5m'))
+        self.assertEqual(23, item._cast_duration('23s'))
+        self.assertEqual(42, item._cast_duration(42))
+        self.assertEqual(42, item._cast_duration('42'))
+        self.assertFalse(item._cast_duration('aa'))
+        self.assertFalse(item._cast_duration(None))
+
+    def test_call(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'autotimer': '5m = 42 = compat_1.2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        item(12)
+        self.assertEqual(12, item._value)
+        self.assertEqual(12, item())
+        conf = {'type': 'num', 'eval': '2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        item(12)
+        self.assertEqual(0, item())
+        item.set(12)
+        self.assertEqual(12, item())
+
+    def test_run_eval(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'eval': '2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        item._Item__run_eval()
+        self.assertEqual(2,item())
+        item._eval = 'bla'
+        item._Item__run_eval()
+        item._eval = 'sh.return_none()'
+        item._Item__run_eval()
+    def test_jsonvars(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'eval': '2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        item.set('42')
+
+        self.assertDictEqual(item.jsonvars(),{'attributes': {}, 'value': 42, 'type': 'num', 'children': [], 'id': 'test_item01', 'name': 'test_item01'})
+      #  __run_eval(self, value=None, caller='Eval', source=None, dest=None):
+    def test_to_json(self):
+        import json
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'eval': '2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        item.set('42')
+        expected = json.dumps({'attributes': {}, 'value': 42, 'type': 'num', 'children': [], 'id': 'test_item01', 'name': 'test_item01'}, sort_keys=True, indent=2)
+        self.assertEqual(item.to_json(), expected)
+
+    def test_type(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num', 'eval': '2'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        self.assertEqual(item.type(), 'num')
+        item._type= 'foo'
+        self.assertNotEqual(item.type(), 'num')
+        self.assertEqual(item.type(), 'foo')
+
+    def test_prev_value(self):
+        sh = MockSmartHome()
+        conf = {'type': 'num'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        self.assertEqual(0,item.prev_value())
+
+        item(12)
+        self.assertEqual(0, item.prev_value())
+
+        item(23)
+        self.assertEqual(12, item.prev_value())
+
+        item(42)
+        self.assertEqual(23, item.prev_value())
+
+    def test_last_prev_change(self):
+        import datetime
+        import time
+        sh = MockSmartHome()
+        conf = {'type': 'num'}
+        item = lib.item.Item(config=conf, parent=sh, smarthome=sh, path='test_item01')
+        item.fill_attribs(conf)
+        sec1 = datetime.datetime.now().time().second
+        self.assertEqual(sec1,item.last_change().time().second)
+        time.sleep(2)
+        item(12)
+        self.assertEqual(datetime.datetime.now().time().second,item.last_change().time().second)
+        self.assertEqual(sec1, item.prev_change().time().second)
+        self.assertEqual(datetime.datetime.now().time().second, item.last_change().time().second)
+        sec2 = datetime.datetime.now().time().second
+        time.sleep(2)
+
+        item(12)
+        self.assertEqual(sec2, item.last_change().time().second)
+        self.assertEqual(sec1, item.prev_change().time().second)
+
+        sec3 = datetime.datetime.now().time().second
+        item(23)
+        self.assertEqual(sec3, item.last_change().time().second)
+
+
+    def test_split_duration_value_string(self):
+        lib.item._split_duration_value_string("")
+
+    def test_join_duration_value_string(self):
+        #print(lib.item._join_duration_value_string(12,123))
+        #(time, value, compat=''):
         pass
+    def testCacheWriteReadJson(self):
+        import datetime
+        from lib.constants import CACHE_JSON
+
+        self.cache_write_load_value(v = True, f=CACHE_JSON)
+        self.cache_write_load_value(v=None, f=CACHE_JSON)
+        self.cache_write_load_value(v=1, f=CACHE_JSON)
+        self.cache_write_load_value(v=123123123, f=CACHE_JSON)
+        self.cache_write_load_value(v="foo", f=CACHE_JSON)
+        self.cache_write_load_value(v={'active': True, 'list': [{'active': True, 'rrule': 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU', 'time': 'sunset+30m', 'value': 1}, {'active': True, 'rrule': 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU', 'time': 'sunrise-30m', 'value': 0}]}, f=CACHE_JSON)
+        self.cache_write_load_value(v={'active': True}, f=CACHE_JSON)
+        self.cache_write_load_value(v=[1,2,3,4,5], f=CACHE_JSON)
+        self.cache_write_load_value(v=["a","2","3"], f=CACHE_JSON)
+        self.cache_write_load_value(v=["a","2","3",2,3,4,5], f=CACHE_JSON)
+        # @TODO: not working : self.cache_write_load_value(v=datetime.datetime.now(), f=CACHE_JSON)
+    def testCacheWriteReadPickle(self):
+        import datetime
+        from lib.constants import CACHE_PICKLE
+
+        self.cache_write_load_value(v = True, f=CACHE_PICKLE)
+        self.cache_write_load_value(v=None, f=CACHE_PICKLE)
+        self.cache_write_load_value(v=1, f=CACHE_PICKLE)
+        self.cache_write_load_value(v=123123123, f=CACHE_PICKLE)
+        self.cache_write_load_value(v="foo", f=CACHE_PICKLE)
+        self.cache_write_load_value(v={'active': True, 'list': [{'active': True, 'rrule': 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU', 'time': 'sunset+30m', 'value': 1}, {'active': True, 'rrule': 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU', 'time': 'sunrise-30m', 'value': 0}]}, f=CACHE_PICKLE)
+        self.cache_write_load_value(v={'active': True}, f=CACHE_PICKLE)
+        self.cache_write_load_value(v=[1,2,3,4,5], f=CACHE_PICKLE)
+        self.cache_write_load_value(v=["a","2","3"], f=CACHE_PICKLE)
+        self.cache_write_load_value(v=["a","2","3",2,3,4,5], f=CACHE_PICKLE)
+        self.cache_write_load_value(v=datetime.datetime.now(), f=CACHE_PICKLE)
+
+
+
+
+
+    def cache_write_load_value(self, v,f):
+        from dateutil.tz import gettz
+
+        TZ = gettz('UTC')
+        fn = 'test.cache'
+
+        lib.item._cache_write(value=v, filename=fn, cformat=f)
+
+        date = cachedvalue = None
+        date, cachedvalue = lib.item._cache_read(filename=fn, tz=TZ, cformat=f)
+        #print(type(cachedvalue))
+        self.assertEqual(v, cachedvalue)
+
+
     def testItemJsonDump(self):
         import lib.itembuilder
         sh = MockSmartHome()
@@ -256,7 +547,7 @@ class MockSmartHome():
                 name = name +'_'+ obj.__self__.get_instance_name()
             print(name)
             print( obj) 
-            print(obj.__self__.get_instance_name())
+#            print(obj.__self__.get_instance_name())
     __logs = {}
     __item_dict = {}
     __items = []
@@ -265,6 +556,9 @@ class MockSmartHome():
 
 
     scheduler = MockScheduler()
+    def trigger(self, name, obj=None, by='Logic', source=None, value=None, dest=None, prio=3, dt=None):
+        print (obj)
+
     def add_log(self, name, log):
         self.__logs[name] = log
     def now(self):
@@ -290,6 +584,8 @@ class MockSmartHome():
         self.__children.append(child)
         # add top level itemst to SmartHome object.
         vars(self)[name] = child
+    def return_none(self):
+        return None
 if __name__ == '__main__':
     unittest.main(verbosity=2)
 

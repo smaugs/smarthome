@@ -3,6 +3,7 @@
 #########################################################################
 # Copyright 2011-2014 Marcus Popp                          marcus@popp.mx
 # Copyright 2016-     Christian Strassburg            c.strassburg@gmx.de
+# Copyright 2016-     Martin Sinn                           m.sinn@gmx.de
 #########################################################################
 #  This file is part of SmartHomeNG.
 #  https://github.com/smarthomeNG/smarthome
@@ -40,6 +41,7 @@ import logging
 import logging.handlers
 import logging.config
 import os
+import shutil
 import re
 import signal
 import subprocess
@@ -75,7 +77,10 @@ import lib.utils
 import lib.orb
 import lib.shyaml
 
+
 from lib.itembuilder import ItemBuilder
+from lib.constants import (YAML_FILE, CONF_FILE, DEFAULT_FILE)
+
 
 #####################################################################
 # Globals
@@ -123,11 +128,12 @@ class SmartHome():
     _plugin_conf = ''	# is filled by plugin.py while reading the configuration file, needed by Backend plugin
 
     _env_logic_conf_basename = os.path.join( _env_dir ,'logic')
-    _items_dir = os.path.join(base_dir , 'items'+os.path.sep)
-    _logic_conf_basename = os.path.join(_etc_dir,'logic')
-    _logic_dir = os.path.join(base_dir , 'logics'+os.path.sep)
-    _cache_dir = os.path.join(_var_dir ,'cache'+os.path.sep)
-    _log_config = os.path.join(_etc_dir,'logging.yaml')
+    _items_dir = os.path.join(base_dir, 'items'+os.path.sep)
+    _logic_conf_basename = os.path.join(_etc_dir, 'logic')
+    _logic_dir = os.path.join(base_dir, 'logics'+os.path.sep)
+    _cache_dir = os.path.join(_var_dir,'cache'+os.path.sep)
+    _log_config = os.path.join(_etc_dir,'logging'+YAML_FILE)
+    _smarthome_conf_basename = None
 
     _log_buffer = 50
     __logs = {}
@@ -143,8 +149,9 @@ class SmartHome():
     _dbapis = {}
     logger = logging.getLogger(__name__)
 
-    def __init__(self, smarthome_conf_basename = os.path.join(_etc_dir,'smarthome')):
+    def __init__(self, smarthome_conf_basename=os.path.join(_etc_dir,'smarthome')):
         # set default timezone to UTC
+        self._smarthome_conf_basename = smarthome_conf_basename
         global TZ
         self.tz = 'UTC'
         os.environ['TZ'] = self.tz
@@ -159,15 +166,16 @@ class SmartHome():
         if MODE == 'default':
             lib.daemon.daemonize(PIDFILE)
 
-        #############################################################
-        # Signal Handling
+        # Add Signal Handling
         signal.signal(signal.SIGHUP, self.reload_logics)
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
 
+        # check config files
+        self.checkConfigFiles()
         # setup logging
         self.initLogging()
-   
+
         #############################################################
         # Check Time
         while datetime.date.today().isoformat() < '2014-03-16':  # XXX update date
@@ -180,7 +188,8 @@ class SmartHome():
         sys.excepthook = self._excepthook
 
         #############################################################
-        # Reading smarthome.conf
+        # Reading smarthome.yaml
+
         config = lib.config.parse_basename(smarthome_conf_basename, configtype='SmartHomeNG')
         if config != {}:
             for attr in config:
@@ -246,17 +255,35 @@ class SmartHome():
             self.sun = lib.orb.Orb('sun', self._lon, self._lat, self._elev)
             self.moon = lib.orb.Orb('moon', self._lon, self._lat, self._elev)
 
+    def checkConfigFiles(self):
+        # logging
+        if not (os.path.isfile(self._log_config)):
+            if os.path.isfile(self._log_config + DEFAULT_FILE):
+                shutil.copy2(self._log_config + DEFAULT_FILE, self._log_config)
+        # smarthome.yaml
+        if not (os.path.isfile(self._smarthome_conf_basename + YAML_FILE)) and not (
+                os.path.isfile(self._smarthome_conf_basename + CONF_FILE)):
+            if os.path.isfile(self._smarthome_conf_basename + YAML_FILE + DEFAULT_FILE):
+                shutil.copy2(self._smarthome_conf_basename + YAML_FILE + DEFAULT_FILE,
+                             self._smarthome_conf_basename + YAML_FILE)
+        # plugins
+        if not (os.path.isfile(self._plugin_conf_basename + YAML_FILE)) and not (
+                os.path.isfile(self._plugin_conf_basename + CONF_FILE)):
+            if os.path.isfile(self._plugin_conf_basename + YAML_FILE + DEFAULT_FILE):
+                shutil.copy2(self._plugin_conf_basename + YAML_FILE + DEFAULT_FILE,
+                             self._plugin_conf_basename + YAML_FILE)
+
     def initLogging(self):
-        fo = open(self._log_config, 'r') 
+        fo = open(self._log_config, 'r')
         doc = lib.shyaml.yaml_load(self._log_config, False)
         logging.config.dictConfig(doc)
         fo.close()
         if MODE == 'interactive':  # remove default stream handler
             logging.getLogger().disabled = True
         elif MODE == 'debug':
-            logging.getLogger().setLevel(logging.DEBUG)        
+            logging.getLogger().setLevel(logging.DEBUG)
         elif MODE == 'quiet':
-            logging.getLogger().setLevel(logging.WARNING)        
+            logging.getLogger().setLevel(logging.WARNING)
 #       log_file.doRollover()
 
     def initMemLog(self):
