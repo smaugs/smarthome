@@ -130,8 +130,9 @@ class Database():
         It is also used internally to create versions table (to keep track
         if the database structure is up to date) and logging.
 
-        Use the 'dbapi' parameter to specify the name of the database type
-        to use (registered in the common configuration, e.g. 'sqlite').
+        Use the 'dbapi' parameter to specify the DB-API2 module of the
+        database type to use (e.g. import the sqlite3 module and pass it 
+        directly as parameter or as name 'sqlite3').
 
         How the database is accessed is specified by the 'connect' parameter
         which supports key/value pairs separated by '|'. These named
@@ -146,6 +147,13 @@ class Database():
         self._format_input = formatting
         self._connected = False
         self._conn = None
+
+        if type(dbapi) is str:
+            try:
+                self._dbapi = __import__(dbapi)
+            except ImportError as e:
+                logger.error("DB-API import failed for \"{}\": {} - module installed?".format(dbapi, e))
+                raise
 
         if self._format_input not in self._styles:
             raise Exception("Database [{}]: SQL format style {} not supported (only {})".format(self._name, self._format_input, self._styles))
@@ -230,10 +238,11 @@ class Database():
         version_table = re.sub('[^a-z0-9_]', '', self._name.lower()) + "_version";
         try:
             version, = self.fetchone("SELECT MAX(version) FROM " + version_table + ";", cur=cur)
+            if version == None:
+               version = 0
         except Exception as e:
+            logger.info("Missing table " + version_table + " error can be ignored, will be created now!");
             self.execute("CREATE TABLE " + version_table + "(version NUMERIC, updated BIGINT, rollout TEXT, rollback TEXT)", cur=cur)
-            version, = self.fetchone("SELECT MAX(version) FROM " + version_table + ";", cur=cur)
-        if version == None:
             version = 0
         logger.info("Database [{}]: Version {} found".format(self._name, version))
         for v in sorted(queries.keys()):
@@ -310,7 +319,7 @@ class Database():
             if c is not None:
                 c.close()
 
-    def verify(self, retry=5):
+    def verify(self, retry=5, delay=5):
         """Verifies the connection status and reconnets if required
 
         The connected status of the connection will be checked by executing
@@ -320,6 +329,9 @@ class Database():
         In case the reconnect fails you can specify how many times a
         reconnect will be executed until it will give up. This can be
         specified by the 'retry' parameter.
+
+        To specify the delay between retries use the `delay` parameter,
+        which defaults to 5 seconds.
         """
         while retry > 0:
             locked = False
@@ -341,6 +353,9 @@ class Database():
                     self.release()
                 self.close()
                 retry = retry - 1
+
+            if retry > 0:
+                time.sleep(delay)
 
         return retry
 

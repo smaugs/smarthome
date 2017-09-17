@@ -1,5 +1,7 @@
 
 import datetime
+import dateutil.tz
+import logging
 
 import lib.item
 import lib.plugin
@@ -10,34 +12,69 @@ from lib.model.smartplugin import SmartPlugin
 
 from tests.common import BASE
 
+
+logger = logging.getLogger('Mockup')
+
+
 class MockScheduler():
 
     def add(self, name, obj, prio=3, cron=None, cycle=None, value=None, offset=None, next=None):
-        print(name)
+        logger.warning('')
+        logger.warning('MockScheduler / add: {}'.format(name))
         if isinstance(obj.__self__, SmartPlugin):
             name = name +'_'+ obj.__self__.get_instance_name()
-        print(name)
-        print( obj)
-        print(obj.__self__.get_instance_name())
+        logger.warning('MockScheduler / add: {}'.format(name))
+        logger.warning('MockScheduler / add: {}'.format(str(obj)))
 
 
 class MockSmartHome():
 
-    base_dir = BASE
+    _base_dir = BASE
+    base_dir = _base_dir     # for external modules using that var (backend, ...?)
+    _default_language = 'de'
+
 
     def __init__(self):
+        VERSION = '1.3a.'
+        VERSION += '0.man'
+        self.version = VERSION
         self.__logs = {}
         self.__item_dict = {}
         self.__items = []
         self.children = []
+        self._use_modules = 'True'
+        self._modules = []
+        self._moduledict = {}
         self._plugins = []
+        self._tzinfo = dateutil.tz.tzutc()
         self.scheduler = MockScheduler()
         self.connections = lib.connection.Connections()
+
+    def get_defaultlanguage(self):
+        return self._default_language
+
+    def set_defaultlanguage(self, language):
+        self._default_language = language
+
+    def get_basedir(self):
+        return self._base_dir
+
+    def getBaseDir(self):
+        """ Deprecated """
+        return self._base_dir
+
+    def trigger(self, name, obj=None, by='Logic', source=None, value=None, dest=None, prio=3, dt=None):
+        logger.warning('MockSmartHome / trigger: {}'.format(str(obj)))
 
     def with_plugins_from(self, conf):
         lib.plugin.Plugins._plugins = []
         lib.plugin.Plugins._threads = []
         self._plugins = lib.plugin.Plugins(self, conf)
+        return self._plugins
+
+    def with_modules_from(self, conf):
+        lib.module.Modules._modules = []
+        self._modules = lib.module.Modules(self, conf)
         return self._plugins
 
     def with_items_from(self, conf):
@@ -61,6 +98,9 @@ class MockSmartHome():
     def now(self):
         return datetime.datetime.now()
 
+    def tzinfo(self):
+        return self._tzinfo
+
     def add_item(self, path, item):
         if path not in self.__items:
             self.__items.append(path)
@@ -78,6 +118,15 @@ class MockSmartHome():
         for plugin in self._plugins:
             yield plugin
 
+    def return_modules(self):
+        l = []
+        for module_key in self._moduledict.keys():
+            l.append(module_key)
+        return l
+
+    def get_module(self, name):
+        return self._moduledict.get(name)
+
     def string2bool(self, string):
         if isinstance(string, bool):
             return string
@@ -87,4 +136,8 @@ class MockSmartHome():
             return True
         else:
             return None
+
+
+    def return_none(self):
+        return None
 

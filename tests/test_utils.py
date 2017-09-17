@@ -26,6 +26,20 @@ from lib.utils import Utils
 #from wakeonlan import WakeOnLan
 class LibUtilsTest(unittest.TestCase):
 
+    def test_is_knx_groupaddress(self):
+        self.assertFalse(Utils.is_knx_groupaddress("1/2"))
+        self.assertTrue(Utils.is_knx_groupaddress("1/2/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("-1/2/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("32/2/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("1/-1/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("1/8/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("1/2/-1"))
+        self.assertFalse(Utils.is_knx_groupaddress("1/2/256"))
+        self.assertFalse(Utils.is_knx_groupaddress("a/2/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("1/a/3"))
+        self.assertFalse(Utils.is_knx_groupaddress("1/2/a"))
+
+
     def test_is_mac(self):
         self.assertTrue(True)
         self.assertTrue(Utils.is_mac("11:22:33:44:55:66"))
@@ -131,6 +145,7 @@ class LibUtilsTest(unittest.TestCase):
         self.assertFalse(Utils.to_bool("false"))
         self.assertFalse(Utils.to_bool("False"))
         self.assertFalse(Utils.to_bool("f"))
+        self.assertFalse(Utils.to_bool("off"))
         self.assertFalse(Utils.to_bool(0))
 
         self.assertTrue(Utils.to_bool(1.2))
@@ -141,7 +156,9 @@ class LibUtilsTest(unittest.TestCase):
         self.assertTrue(Utils.to_bool("true"))
         self.assertTrue(Utils.to_bool("True"))
         self.assertTrue(Utils.to_bool("t"))
+        self.assertTrue(Utils.to_bool("on"))
         self.assertTrue(Utils.to_bool(1))
+        self.assertTrue(Utils.to_bool(2))
 
     def test_create_hash(self):
         with self.assertRaises(Exception):

@@ -183,7 +183,8 @@ class Scheduler(threading.Thread):
     def remove(self, name):
         """
         remove a scheduler entry with given name. If a call is made from a SmartPlugin with a instance configuration
-          the instance name is added to the name
+        the instance name is added to the name
+        
         :param name: scheduler entry name to remove
         :return:
         """
@@ -265,8 +266,11 @@ class Scheduler(threading.Thread):
             self._next_time(name, offset)
         self._lock.release()
 
-    def get( self, name):
-        name = self.check_caller()
+    def get(self, name):
+        """
+        takes a given name for a scheduler and returns either the matching scheduler or None
+        """
+        name = self.check_caller(name)
         if name in self._scheduler:
             return self._scheduler[name]
         else:

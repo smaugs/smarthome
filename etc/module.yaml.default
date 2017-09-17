@@ -1,0 +1,10 @@
+%YAML 1.1
+---
+# etc/module.yaml
+dummy:
+    module_name: dummy
+
+http:
+    module_name: http
+#    port: '1234'
+#    starturl: backend

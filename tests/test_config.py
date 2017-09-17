@@ -3,6 +3,8 @@ import unittest
 import common
 import lib.config
 
+verbose = True
+
 
 class ConfigBaseTests:
     fmt = None
@@ -18,15 +20,19 @@ class ConfigBaseTests:
 
     def test_read_ignores_starting_digits(self):
         conf = self.config('digits')
-        self.assertEquals(0, len(conf['digits']))
+        self.assertEqual(0, len(conf['digits']))
 
     def test_read_ignores_set(self):
         conf = self.config('reserved')
-        self.assertEquals(0, len(conf['reserved']))
+        self.assertEqual(0, len(conf['reserved']))
+
+    def test_read_ignores_keyword(self):
+        conf = self.config('keyword')
+        self.assertEqual(0, len(conf['keyword']))
 
     def test_read_ignores_invalidchars(self):
         conf = self.config('invalidchars')
-        self.assertEquals(0, len(conf['invalidchars']))
+        self.assertEqual(0, len(conf['invalidchars']))
 
     def test_read_sections(self):
         conf = self.config('sections')
@@ -98,6 +104,9 @@ class TestConfigConf( unittest.TestCase,ConfigBaseTests):
     fmt = 'conf'
 
     def test_confread_ignores_empty_name(self):
+        if verbose == True:
+            print()
+            print('=== TestConfigConf:')
         conf = self.config('empty')
         self.assertEqual(0, len(conf['empty']))
 
@@ -113,6 +122,9 @@ class TestConfigYaml(unittest.TestCase,ConfigBaseTests):
     fmt = 'yaml'
 
     def test_yamlread_multiline(self):
+        if verbose == True:
+            print()
+            print('=== TestConfigYaml:')
         conf = self.config('keyvalues')
         self.assertEqual(conf['section']['key_multiline'], 'line1line2')
         self.assertEqual(conf['section']['key_multiline_quotes'], 'line1line2')
