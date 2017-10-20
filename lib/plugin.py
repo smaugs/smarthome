@@ -28,6 +28,17 @@
 """
 This library implements loading and starting of plugins of SmartHomeNG.
 
+The methods of the class Plugins implement the API for plugins. 
+They can be used the following way: To call eg. **xxx()**, use the following syntax:
+
+.. code-block:: python
+
+        from lib.plugin import Plugins
+        plugins = Plugins.get_instance()
+        
+        # to access a method (eg. xxx()):
+        plugins.xxx()
+
 
 :Warning: This library is part of the core of SmartHomeNG. It **should not be called directly** from plugins!
 
@@ -46,6 +57,9 @@ from lib.metadata import Metadata
 logger = logging.getLogger(__name__)
 
 
+_plugins_instance = None    # Pointer to the initialized instance of the Plugins class (for use by static methods)
+
+
 class Plugins():
     """
     Plugin loader Class. Parses config file and creates a worker thread for each plugin
@@ -61,6 +75,8 @@ class Plugins():
     
     def __init__(self, smarthome, configfile):
         self._sh = smarthome
+        global _plugins_instance
+        _plugins_instance = self
 
         # until Backend plugin is modified
         if os.path.isfile(configfile+ YAML_FILE):
@@ -77,7 +93,7 @@ class Plugins():
         
         for plugin in _conf:
             logger.debug("Plugins, section: {}".format(plugin))
-            plugin_name, self.meta = self._get_pluginname_and_metadata(_conf[plugin])
+            plugin_name, self.meta = self._get_pluginname_and_metadata(plugin, _conf[plugin])
             if self.meta.test_shngcompatibility():
                 classname, classpath = self._get_classname_and_classpath(_conf[plugin], plugin_name)
                 if (classname == '') and (classpath == ''):
@@ -110,7 +126,7 @@ class Plugins():
         del(_conf)  # clean up
         
 
-    def _get_pluginname_and_metadata(self, plg_conf):
+    def _get_pluginname_and_metadata(self, plg_section, plg_conf):
         """
         Return the actual plugin name and the metadata instance
         
@@ -121,15 +137,23 @@ class Plugins():
         :rtype: string, object
         """
         plugin_name = plg_conf.get('plugin_name','').lower()
+        plugin_version = plg_conf.get('plugin_version','').lower()
+        if plugin_version != '':
+            plugin_version = '._pv_' + plugin_version.replace('.','_')
         if plugin_name != '':
-            meta = Metadata(self._sh, plugin_name, 'plugin')
+            meta = Metadata(self._sh, (plugin_name+plugin_version).replace('.',os.sep), 'plugin')
         else:
             classpath = plg_conf.get(KEY_CLASS_PATH,'')
             if classpath != '':
                 plugin_name = classpath.split('.')[len(classpath.split('.'))-1].lower()
-            logger.debug("Plugins __init__: pluginname = '{}', classpath '{}'".format(plugin_name, classpath))
-            meta = Metadata(self._sh, plugin_name, 'plugin', classpath)
-        return (plugin_name, meta)
+                if plugin_name.startswith('_pv'):
+                    plugin_name = classpath.split('.')[len(classpath.split('.'))-2].lower()
+                logger.debug("Plugins __init__: pluginname = '{}', classpath '{}'".format(plugin_name, classpath))
+                meta = Metadata(self._sh, plugin_name, 'plugin', (classpath+plugin_version).replace('.',os.sep))
+            else:
+                logger.error("Plugin configuration section '{}': Neither 'plugin_name' nor '{}' are defined.".format( plg_section, KEY_CLASS_PATH ))
+                meta = Metadata(self._sh, plugin_name, 'plugin', classpath)
+        return (plugin_name+plugin_version, meta)
         
 
     def _get_conf_args(self, plg_conf):
@@ -164,9 +188,13 @@ class Plugins():
         :return: classname, classpass
         :rtype: str, str
         """
-        classname = self.meta.get_string('classname')
+        classname = plg_conf.get(KEY_CLASS_NAME,'')
+        plugin_version = plg_conf.get('plugin_version','').lower()
+        if plugin_version != '':
+            plugin_version = '._pv_' + plugin_version.replace('.','_')
+
         if classname == '':
-            classname = plg_conf.get(KEY_CLASS_NAME,'')
+            classname = self.meta.get_string('classname')
         try:
             classpath = plg_conf[KEY_CLASS_PATH]
         except:
@@ -174,8 +202,9 @@ class Plugins():
                 classpath = ''
             else:
                 classpath = 'plugins.' + plugin_name
-        return (classname, classpath)
-        
+#        logger.warning("_get_classname_and_classpath: plugin_name = {}, classpath = {}, classname = {}".format(plugin_name, classpath, classname))
+        return (classname, classpath+plugin_version)
+
 
     def _get_instancename(self, plg_conf):
         """
@@ -226,11 +255,39 @@ class Plugins():
         return duplicate
         
         
-    # ---------------------------------------------------------------------------------
 
     def __iter__(self):
         for plugin in self._plugins:
             yield plugin
+
+    # ------------------------------------------------------------------------------------
+    #   Following (static) methods of the class Plugins implement the API for plugins in shNG
+    # ------------------------------------------------------------------------------------
+
+    @staticmethod
+    def get_instance():
+        """
+        Returns the instance of the Plugins class, to be used to access the plugin-api
+        
+        Use it the following way to access the api:
+        
+        .. code-block:: python
+
+            from lib.plugin import Plugins
+            plugins = Plugins.get_instance()
+            
+            # to access a method (eg. xxx()):
+            plugins.xxx()
+
+        
+        :return: logics instance
+        :rtype: object of None
+        """
+        if _plugins_instance == None:
+            return None
+        else:
+            return _plugins_instance
+
 
     def start(self):
         logger.info('Start plugins')
@@ -282,12 +339,14 @@ class PluginWrapper(threading.Thread):
     :param classpath: Path to the Python file containing the class
     :param args: Parameter as specified in the configuration file (etc/plugin.yaml)
     :param instance: Name of the instance of the plugin
+    :param meta:
     :type samrthome: object
     :type name: str
     :type classname: str
     :type classpath: str
     :type args: dict
     :type instance: str
+    :type meta: object
     """
     
     def __init__(self, smarthome, name, classname, classpath, args, instance, meta):
@@ -298,6 +357,7 @@ class PluginWrapper(threading.Thread):
 
         threading.Thread.__init__(self, name=name)
 
+        self._init_complete = False
         self.meta = meta
         # Load an instance of the plugin
         try:
@@ -341,7 +401,7 @@ class PluginWrapper(threading.Thread):
         if params_ok == True:
             if plugin_params != {}:
                 # initialize parameters the old way
-                argstring = ",".join(["{}={}".format(name, "'"+str(plugin_params.get(name,''))+"'") for name in arglist])
+                argstring = ",".join(["{}={}".format(name, '"'+str(plugin_params.get(name,''))+'"') for name in arglist])
             # initialize parameters the new way: Define a dict within the instance
             self.get_implementation()._parameters = plugin_params
             self.get_implementation()._metadata = self.meta
