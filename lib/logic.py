@@ -59,6 +59,8 @@ from lib.utils import Utils
 from lib.constants import PLUGIN_PARSE_LOGIC
 from lib.constants import (YAML_FILE, CONF_FILE)
 
+from lib.scheduler import Scheduler
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,6 +91,7 @@ class Logics():
         self.alive = True
         global _logics_instance
         _logics_instance = self
+        self.scheduler = Scheduler.get_instance()
         
         _config = {}
         self._systemlogics = self._read_logics(envlogicconf, self._env_dir)
@@ -130,10 +133,10 @@ class Logics():
         if self.is_logic_loaded(name):
             return False
         logger.debug("Logic: {}".format(name))
-        logic = Logic(self._sh, name, config[name])
+        logic = Logic(self._sh, name, config[name], self)
         if hasattr(logic, 'bytecode'):
             self._logics[name] = logic
-            self._sh.scheduler.add(self._logicname_prefix+name, logic, logic.prio, logic.crontab, logic.cycle)
+            self.scheduler.add(self._logicname_prefix+name, logic, logic.prio, logic.crontab, logic.cycle)
         else:
             return False
         # plugin hook
@@ -196,12 +199,53 @@ class Logics():
 
         
         :return: logics instance
-        :rtype: object of None
+        :rtype: object or None
         """
         if _logics_instance == None:
             return None
         else:
             return _logics_instance
+
+
+    def scheduler_add(self, name, obj, prio=3, cron=None, cycle=None, value=None, offset=None, next=None):
+        """
+        This methods adds a scheduler entry for a logic-scheduler
+        
+        A plugin identifiction is added to the scheduler name
+         
+        The parameters are identical to the scheduler.add method from lib.scheduler
+        """
+        if name != '':
+            name = '.'+name
+        name = self._logicname_prefix+self.get_fullname()+name
+        self.logger.debug("scheduler_add: name = {}".format(name))
+        self._sh.scheduler.add(name, obj, prio, cron, cycle, value, offset, next, from_smartplugin=True)
+
+
+    def scheduler_change(self, name, **kwargs):
+        """
+        This methods changes a scheduler entry of a logic-scheduler
+        """
+        if name != '':
+            name = '.'+name
+        name = self._logicname_prefix+self.get_fullname()+name
+        self.logger.debug("scheduler_change: name = {}".format(name))
+        self._sh.scheduler.change(name, kwargs)
+        
+        
+    def scheduler_remove(self, name):
+        """
+        This methods rmoves a scheduler entry of a logic-scheduler
+        
+        A plugin identifiction is added to the scheduler name
+         
+        The parameters are identical to the scheduler.remove method from lib.scheduler
+        """
+        if name != '':
+            name = '.'+name
+        name = self._logicname_prefix+self.get_fullname()+name
+        self.logger.debug("scheduler_remove: name = {}".format(name))
+        self._sh.scheduler.remove(name, from_smartplugin=False) 
 
 
     def get_logics_dir(self):
@@ -291,8 +335,8 @@ class Logics():
         info['name'] = logic.name
         info['enabled'] = logic.enabled
 
-        if self._sh.scheduler.return_next(self._logicname_prefix+logic.name):
-            info['next_exec'] = self._sh.scheduler.return_next(self._logicname_prefix+logic.name).strftime('%Y-%m-%d %H:%M:%S%z')
+        if self.scheduler.return_next(self._logicname_prefix+logic.name):
+            info['next_exec'] = self.scheduler.return_next(self._logicname_prefix+logic.name).strftime('%Y-%m-%d %H:%M:%S%z')
 
         info['cycle'] = logic.cycle
         info['crontab'] = logic.crontab
@@ -304,8 +348,25 @@ class Logics():
         info['logictype'] = self.return_logictype(logic.name)
         info['filename'] = logic.filename
         info['pathname'] = logic.pathname
+        try:
+            info['description'] = logic.description
+        except:
+            info['description'] = ''
+        info['visu_access'] = self.visu_access(logic.name)
 #        info['watch_item_list'] = []
         return info
+        
+
+    def visu_access(self, name):
+        """
+        Return if visu may access the logic
+        """
+        try:
+            if self.return_logic(name).visu_acl.lower() in ('true', 'yes', 'rw'):
+                return True
+        except Exception as e:
+            pass
+        return False
         
 
     def is_logic_enabled(self, name):
@@ -357,7 +418,7 @@ class Logics():
         logger.debug("trigger_logic: Trigger logic = '{}'".format(name))
         if name in self.return_loaded_logics():
             if self.is_logic_enabled(name):
-                self._sh.trigger(name, by='Backend')
+                self.scheduler.trigger(self._logicname_prefix+name, by='Backend')
             else:
                 logger.warning("trigger_logic: Logic '{}' not triggered because it is disabled".format(name))
         else:
@@ -421,7 +482,7 @@ class Logics():
         mylogic.crontab = None
 
         # Scheduler entfernen
-        self._sh.scheduler.remove(self._logicname_prefix+name)
+        self.scheduler.remove(self._logicname_prefix+name)
     
         # watch_items entfernen
         if hasattr(mylogic, 'watch_item'):
@@ -559,9 +620,9 @@ class Logics():
         
         This funtion returns the data from one section of the configuration file as a list of
         configuration entries. A configuration entry is a list with three items:
-          - key      configuration key
-          - value    configuration value (string or list)
-          - comment  comment for the value (string or list)
+        - key      configuration key
+        - value    configuration value (string or list)
+        - comment  comment for the value (string or list)
           
         :param section: Name of the logic (section)
         :type section: str
@@ -586,16 +647,28 @@ class Logics():
                     value = section_dict[key]
                     comment = []            # 'Comment 6: ' + loaded['a']['c'].ca.items[0][0].value      'Comment 7: ' + loaded['a']['c'].ca.items[1][0].value
                     for i in range(len(value)):
-                        c = section_dict[key].ca.items[i][0].value
-                        if c[0] == '#':
-                            c = c[1:]
+                        if i in section_dict[key].ca.items:
+                            try:
+                                c = section_dict[key].ca.items[i][0].value
+                            except:
+                                logger.info("c: {}, Key: {}".format(c, key)) 
+                                c = ''
+                            if len(c) > 0 and c[0] == '#':
+                                c = c[1:]
+                        else:
+                            c = ''
                     
                         comment.append(c.strip())
                 else:
                     value = section_dict[key]
-                    c = section_dict.ca.items[key][2].value    # if not list: loaded['a'].ca.items['b'][2].value 
-                    if c[0] == '#':
-                        c = c[1:]
+                    c = ''
+                    if key in section_dict.ca.items:
+                        try:
+                            c = section_dict.ca.items[key][2].value    # if not list: loaded['a'].ca.items['b'][2].value 
+                        except:
+                            logger.info("c2: {}, Key: {}".format(c, key)) 
+                        if len(c) > 0 and c[0] == '#':
+                            c = c[1:]
                     comment = c.strip()
             
 #                logger.warning("-> read_config_section: section_dict['{}'] = {}, comment = '{}'".format(key, str(section_dict[key]), comment ))
@@ -605,11 +678,18 @@ class Logics():
         
     def set_config_section_key(self, section, key, value):
         """
+        Sets the value of key for a given logic (section)
+        
+        :param section: logic to set the key for
+        :param key: key for which the value should be set
+        :param value: value to set
+        
         """
         # load /etc/logic.yaml
         conf_filename = os.path.join(self._get_etc_dir(), 'logic') 
         conf = shyaml.yaml_load_roundtrip(conf_filename)
         
+        logger.info("set_config_section_key: section={}, key={}, value={}".format(section, key, str(value)))
         if value == None:
             del conf[section][key]
         else:
@@ -617,6 +697,16 @@ class Logics():
 
         # save /etc/logic.yaml
         shyaml.yaml_save_roundtrip(conf_filename, conf, True)
+        
+        # activate visu_acl without reloading the logic
+        if key == 'visu_acl':
+            mylogic = self.return_logic(section)
+            if mylogic is not None:
+                logger.info(" - key={}, value={}".format(key, value))
+#                if value is None:
+#                    value = 'false'
+                mylogic.visu_acl = str(value)
+
         return
         
         
@@ -641,7 +731,7 @@ class Logics():
         if self.return_config_type() != YAML_FILE:
             logger.error("update_config_section: Editing of configuration only possible with new (yaml) config format")
             return False
-            
+                        
         # load /etc/logic.yaml
         conf_filename = os.path.join(self._get_etc_dir(), 'logic') 
         conf = shyaml.yaml_load_roundtrip(conf_filename)
@@ -649,10 +739,6 @@ class Logics():
             conf = shyaml.get_emptynode()
             
         # empty section
-#        try:
-#            keep_enabled = conf[section].get('enabled', None)
-#        except:
-#            keep_enabled = None
         if conf.get(section, None) == None:
             conf[section] = shyaml.get_emptynode()
         del conf[section]['filename']
@@ -667,7 +753,7 @@ class Logics():
             key = c[0].strip()
             value = c[1]
             comment = c[2]
-            logger.info("update_config_section: key {}, value {}, comment {}".format(key, str(value), str(comment)))
+            logger.info(" - key={}, value={}, comment={}".format(key, str(value), str(comment)))
             if isinstance(value, str):
                 value = value.strip()
                 comment = comment.strip()
@@ -702,9 +788,6 @@ class Logics():
                             if comment[i] != '':
                                 conf[section][key].yaml_add_eol_comment(comment[i], i, column=50)
 
-#        if keep_enabled != None:
-#            conf[section]['enabled'] = keep_enabled
-            
         if conf[section] == shyaml.get_emptynode():
             conf[section] = None
         shyaml.yaml_save_roundtrip(conf_filename, conf, True)
@@ -792,17 +875,21 @@ class Logic():
 
     _logicname_prefix = 'logics.'
 
-    def __init__(self, smarthome, name, attributes):
+    def __init__(self, smarthome, name, attributes, logics):
         self._sh = smarthome
         self.name = name
+        self._logics = logics   # access to the logics api
         self.enabled = True if 'enabled' not in attributes else Utils.to_bool(attributes['enabled'])
         self.crontab = None
         self.cycle = None
         self.prio = 3
         self.last = None
+        self._last_run = None
         self.conf = attributes
+        self.scheduler = Logics.get_instance().scheduler
         self.__methods_to_trigger = []
         if attributes != 'None':
+            # Fills crontab, cycle and other parameters
             for attribute in attributes:
                 if attribute != 'enabled':
                     vars(self)[attribute] = attributes[attribute]
@@ -823,8 +910,8 @@ class Logic():
 
     def __call__(self, caller='Logic', source=None, value=None, dest=None, dt=None):
         if self.enabled:
-            self._sh.scheduler.trigger(self._logicname_prefix+self.name, self, prio=self.prio, by=caller, source=source, dest=dest, value=value, dt=dt)
-
+            self.scheduler.trigger(self._logicname_prefix+self.name, self, prio=self.prio, by=caller, source=source, dest=dest, value=value, dt=dt)
+            
     def enable(self):
         """
         Enables the loaded logic
@@ -843,10 +930,27 @@ class Logic():
         """
         return self.enabled
         
+    def last_run(self):
+        """
+        Returns the timestamp of the last run of the logic or None (if the logic wasn't triggered)
+        
+        :return: timestamp of last run
+        :rtype: datetime timestamp
+        """
+        return self._last_run
+
+    def set_last_run(self):
+        """
+        Sets the timestamp of the last run of the logic to now
+        
+        This method is called by the scheduler
+        """
+        self._last_run = self._sh.now()
+        
 
     def trigger(self, by='Logic', source=None, value=None, dest=None, dt=None):
         if self.enabled:
-            self._sh.scheduler.trigger(self._logicname_prefix+self.name, self, prio=self.prio, by=by, source=source, dest=dest, value=value, dt=dt)
+            self.scheduler.trigger(self._logicname_prefix+self.name, self, prio=self.prio, by=by, source=source, dest=dest, value=value, dt=dt)
 
     def _generate_bytecode(self):
         if hasattr(self, 'pathname'):

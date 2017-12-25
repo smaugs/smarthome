@@ -41,6 +41,9 @@ valid_attr_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567
 digits = '0123456789'
 reserved = ['set', 'get']
 
+REMOVE_ATTR = 'attr'
+REMOVE_PATH = 'path'
+
 def parse_basename(basename, configtype=''):
     '''
     Load and parse a single configuration and merge it to the configuration tree
@@ -66,7 +69,7 @@ def parse_basename(basename, configtype=''):
     return config
         
 
-def parse_itemsdir(itemsdir, item_conf):
+def parse_itemsdir(itemsdir, item_conf, addfilenames=False):
     '''
     Load and parse item configurations and merge it to the configuration tree
     The configuration is only specified by the name of the directory.
@@ -88,14 +91,14 @@ def parse_itemsdir(itemsdir, item_conf):
                 logger.info("config.parse_itemsdir: skipping logic definition file = {}".format( itemsdir+item_file ))
             else:
                 try:
-                    item_conf = parse(itemsdir + item_file, item_conf)
+                    item_conf = parse(itemsdir + item_file, item_conf, addfilenames)
                 except Exception as e:
                     logger.exception("Problem reading {0}: {1}".format(item_file, e))
                     continue
     return item_conf
 
 
-def parse(filename, config=None):
+def parse(filename, config=None, addfilenames=False):
     '''
     Load and parse a configuration file and merge it to the configuration tree
     Depending on the extension of the filename, the apropriate parser is called
@@ -110,7 +113,7 @@ def parse(filename, config=None):
 
     '''
     if filename.endswith(YAML_FILE) and os.path.isfile(filename):
-         return parse_yaml(filename, config)
+         return parse_yaml(filename, config, addfilenames)
     elif filename.endswith(CONF_FILE) and os.path.isfile(filename):
         return parse_conf(filename, config)
     return {}
@@ -118,7 +121,7 @@ def parse(filename, config=None):
 
 # --------------------------------------------------------------------------------------
 
-def remove_keys(ydata, func, level=0):
+def remove_keys(ydata, func, remove=[REMOVE_ATTR], level=0, msg=None, key_prefix=''):
     '''
     Removes given keys from a dict or OrderedDict structure
 
@@ -133,13 +136,20 @@ def remove_keys(ydata, func, level=0):
     try:
         level_keys = list(ydata.keys())
         for key in level_keys:
-            if type(ydata[key]).__name__ in ['dict','OrderedDict']:
-                remove_keys(ydata[key], func, level+1)
+            key_str = str(key)
+            key_dict = type(ydata[key]).__name__ in ['dict','OrderedDict']
+            if  not key_dict:
+                key_remove = REMOVE_ATTR in remove and func(key_str)
             else:
-                if func(str(key)):
-                    ydata.pop(key)
-    except:
-        logger.error("Problem removing key from '{}', probably invalid YAML file".format(str(ydata)))
+                key_remove = REMOVE_PATH in remove and func(key_str)
+            if key_remove:
+                if msg:
+                    logger.warn(msg.format(key_prefix+key_str))
+                ydata.pop(key)
+            elif key_dict:
+                remove_keys(ydata[key], func, remove, level+1, msg, key_prefix+key_str+'.')
+    except Exception as e:
+        logger.error("Problem removing key from '{}', probably invalid YAML file: {}".format(str(ydata), e))
 
 
 
@@ -151,7 +161,7 @@ def remove_comments(ydata):
     :type ydata: OrderedDict
     
     '''
-    remove_keys(ydata, lambda k: k.startswith('comment'))
+    remove_keys(ydata, lambda k: k.startswith('comment'), [REMOVE_ATTR])
 
 
 def remove_digits(ydata):
@@ -162,7 +172,7 @@ def remove_digits(ydata):
     :type ydata: OrderedDict
 
     '''
-    remove_keys(ydata, lambda k: k[0] in digits)
+    remove_keys(ydata, lambda k: k[0] in digits, [REMOVE_ATTR, REMOVE_PATH], msg="Problem parsing '{}': item starts with digits")
 
 
 def remove_reserved(ydata):
@@ -173,7 +183,7 @@ def remove_reserved(ydata):
     :type ydata: OrderedDict
 
     '''
-    remove_keys(ydata, lambda k: k in reserved)
+    remove_keys(ydata, lambda k: k in reserved, [REMOVE_PATH], msg="Problem parsing '{}': item using reserved word set/get")
 
 
 def remove_keyword(ydata):
@@ -184,7 +194,7 @@ def remove_keyword(ydata):
     :type ydata: OrderedDict
 
     '''
-    remove_keys(ydata, lambda k: keyword.iskeyword(k))
+    remove_keys(ydata, lambda k: keyword.iskeyword(k), [REMOVE_PATH], msg="Problem parsing '{}': item using reserved Python keyword")
 
 
 def remove_invalid(ydata):
@@ -196,7 +206,7 @@ def remove_invalid(ydata):
 
     '''
     valid_chars = valid_item_chars + valid_attr_chars
-    remove_keys(ydata, lambda k: True if True in [True for i in range(len(k)) if k[i] not in valid_chars] else False)
+    remove_keys(ydata, lambda k: True if True in [True for i in range(len(k)) if k[i] not in valid_chars] else False, [REMOVE_ATTR, REMOVE_PATH], msg="Problem parsing '{}' invalid character. Valid characters are: " + str(valid_chars))
 
 
 def merge(source, destination):
@@ -239,8 +249,8 @@ def merge(source, destination):
     return destination
     
     
-def parse_yaml(filename, config=None):
-    '''
+def parse_yaml(filename, config=None, addfilenames=False):
+    """
     Load and parse a yaml configuration file and merge it to the configuration tree
 
     :param filename: Name of the configuration file
@@ -279,7 +289,8 @@ def parse_yaml(filename, config=None):
     Valid characters for the items are a-z and A-Z plus any digit and underscore as second or further characters.
     Valid characters for the attributes are the same as for an item plus @ and *
 
-    '''
+    """
+    logger.debug("parse_yaml: Parsing file {}".format(os.path.basename(filename)))
     if config is None:
         config = collections.OrderedDict()
 
@@ -290,9 +301,33 @@ def parse_yaml(filename, config=None):
         remove_reserved(items)
         remove_keyword(items)
         remove_invalid(items)
-        
+
+        if addfilenames:
+            logger.debug("parse_yaml: Add filename = {} to items".format(os.path.basename(filename)))
+            _add_filenames_to_config(items, os.path.basename(filename))
+
         config = merge(items, config)
     return config
+    
+
+def _add_filenames_to_config(items, filename, level=0):
+    """
+    Adds the name of the config file to the config items
+    
+    This routine is used to add the source filename to: 
+    - be able to display the file an item is defined in (backend page items)
+    - to enable editing and storing back of item definitions
+    
+    This function calls itself recurselively
+    
+    """
+    for attr, value in items.items():
+        if isinstance(value, dict):
+            child_path = dict(value)
+            if filename != '':
+                value['_filename'] = filename
+            _add_filenames_to_config(child_path, filename, level+1)
+    return
     
 
 # --------------------------------------------------------------------------------------
@@ -441,6 +476,7 @@ def parse_conf(filename, config=None):
                 if len(attr) > 0:
                     if attr[0] in digits:
                         logger.error("Problem parsing '{}' attrib starts with a digit '{}' in line {}: {}.".format(filename, attr[0], linenu, attr ))
+                        continue
                 if '|' in value:
                     item[attr] = [strip_quotes(x) for x in value.split('|')]
                 else:

@@ -20,19 +20,23 @@ class ConfigBaseTests:
 
     def test_read_ignores_starting_digits(self):
         conf = self.config('digits')
-        self.assertEqual(0, len(conf['digits']))
+        self.assertEqual(1, len(conf['digits']))
+        self.assertFalse('123' in conf['digits']['item'])
 
     def test_read_ignores_set(self):
         conf = self.config('reserved')
-        self.assertEqual(0, len(conf['reserved']))
+        self.assertEqual(1, len(conf['reserved']))
+        self.assertEqual('test', conf['reserved']['item']['set'])
 
     def test_read_ignores_keyword(self):
         conf = self.config('keyword')
-        self.assertEqual(0, len(conf['keyword']))
+        self.assertEqual(1, len(conf['keyword']))
+        self.assertEqual('test', conf['keyword']['item']['global'])
 
     def test_read_ignores_invalidchars(self):
         conf = self.config('invalidchars')
-        self.assertEqual(0, len(conf['invalidchars']))
+        self.assertEqual(1, len(conf['invalidchars']))
+        self.assertFalse('invalid.dot' in conf['invalidchars']['item'])
 
     def test_read_sections(self):
         conf = self.config('sections')
@@ -93,10 +97,22 @@ class ConfigBaseTests:
 
     def test_read_structure(self):
         conf = self.config('structure')
+        self.assertTrue('attr1' in conf['parent1'])
+        self.assertEqual('value1', conf['parent1']['attr1'])
         self.assertTrue('child1' in conf['parent1'])
+        self.assertTrue('attr2' in conf['parent1']['child1'])
+        self.assertEqual('value2', conf['parent1']['child1']['attr2'])
         self.assertTrue('child2' in conf['parent1'])
+        self.assertTrue('attr3' in conf['parent1']['child2'])
+        self.assertEqual('value3', conf['parent1']['child2']['attr3'])
+        self.assertTrue('attr4' in conf['parent2'])
+        self.assertEqual('value4', conf['parent2']['attr4'])
         self.assertTrue('child1' in conf['parent2'])
+        self.assertTrue('attr5' in conf['parent2']['child1'])
+        self.assertEqual('value5', conf['parent2']['child1']['attr5'])
         self.assertTrue('child2' in conf['parent2'])
+        self.assertTrue('attr6' in conf['parent2']['child2'])
+        self.assertEqual('value6', conf['parent2']['child2']['attr6'])
 
 
 class TestConfigConf( unittest.TestCase,ConfigBaseTests):

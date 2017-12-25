@@ -21,11 +21,37 @@
 #  along with SmartHomeNG. If not, see <http://www.gnu.org/licenses/>.
 #########################################################################
 
+
+"""
+This script creates the files for including the plugin documentation into the developer- and
+user-documentation.
+
+it creates the files:
+
+- plugins_gateway.rst
+- plugins_interface.rst
+- plugins_protocol.rst
+- plugins_system.rst 
+- plugins_unclassified.rst
+- plugins_web.rst
+
+in the directory **../doc/<user/developer>/source/plugins_doc** .
+
+These files contain
+
+- an include for a header file
+- a toctree directive
+- a table with information about the plugins and links to further information
+- an include for a footer file
+
+"""
+
 import os
 
 print('')
 print(os.path.basename(__file__) + ' - Builds the .rst files for the documentation')
 print('')
+start_dir = os.getcwd()
 
 import sys
 # find lib directory and import lib/item_conversion
@@ -40,14 +66,17 @@ import shyaml
 
 import subprocess
 
+#global language
+#language = 'en'
+
 
 type_unclassified = 'unclassified'
-plugin_sections = [ ['gateway', 'Gateway'],
-                    ['interface', 'Interface'],
-                    ['protocol', 'Protocol'],
-                    ['system', 'System'],
-                    [type_unclassified, 'Non classified Plugins'],
-                    ['web', 'Web / Cloud Plugins']
+plugin_sections = [ ['gateway', 'Gateway', 'Gateway'],
+                    ['interface', 'Interface', 'Interface'],
+                    ['protocol', 'Protocol', 'Protokoll'],
+                    ['system', 'System', 'System'],
+                    [type_unclassified, 'Non classified', 'nicht klassifizierte'],
+                    ['web', 'Web/Cloud', 'Web/Cloud']
                   ]
 
 
@@ -123,7 +152,12 @@ def get_tester(section_dict, maxlen=20):
     maint = section_dict.get('tester', '')
             
     import textwrap
-    lines = textwrap.wrap(maint, maxlen, break_long_words=False)
+    try:
+        lines = textwrap.wrap(str(maint), maxlen, break_long_words=False)
+    except:
+        print()
+        print("section_dict: {}, maint: {}".format(section_dict, maint))
+        print()
     if lines == []:
         lines.append('')
     return lines
@@ -149,6 +183,14 @@ def get_supurl(section_dict, maxlen=70):
     return lines
 
 
+def html_escape(str):
+#    str = str.rstrip().replace('<', '&lt;').replace('>', '&gt;')
+#    str = str.rstrip().replace('(', '&#40;').replace(')', '&#41;')
+#    str = str.rstrip().replace("'", '&#39;').replace('"', '&quot;')
+    html = str.rstrip().replace("ä", '&auml;').replace("ö", '&ouml;').replace("ü", '&uuml;')
+    return html
+
+
 def build_pluginlist( plugin_type='all' ):
     """
     Return a list of dicts with a dict for each plugin of the requested type
@@ -171,11 +213,11 @@ def build_pluginlist( plugin_type='all' ):
                         plgtype = section_dict.get('type').lower()
                         plg_dict['name'] = metaplugin.lower()
                         plg_dict['type'] = plgtype
-                        plg_dict['desc'] = get_description(section_dict, 85)
+                        plg_dict['desc'] = get_description(section_dict, 85, language)
                         plg_dict['maint'] = get_maintainer(section_dict, 15)
                         plg_dict['test'] = get_tester(section_dict, 15)
-                        plg_dict['doc'] = section_dict.get('documentation', '')
-                        plg_dict['sup'] = section_dict.get('support', '')
+                        plg_dict['doc'] = html_escape(section_dict.get('documentation', ''))
+                        plg_dict['sup'] = html_escape(section_dict.get('support', ''))
                     else:
                         plgtype = type_unclassified
                         if plugin_type == type_unclassified:
@@ -186,11 +228,11 @@ def build_pluginlist( plugin_type='all' ):
                 if (plgtype == type_unclassified) and (plugin_yaml != ''):
                     plg_dict['name'] = metaplugin.lower()
                     plg_dict['type'] = type_unclassified
-                    plg_dict['desc'] = get_description(section_dict, 85)
+                    plg_dict['desc'] = get_description(section_dict, 85, language)
                     plg_dict['maint'] = get_maintainer(section_dict, 15)
                     plg_dict['test'] = get_tester(section_dict, 15)
-                    plg_dict['doc'] = section_dict.get('documentation', '')
-                    plg_dict['sup'] = section_dict.get('support', '')
+                    plg_dict['doc'] = html_escape(section_dict.get('documentation', ''))
+                    plg_dict['sup'] = html_escape(section_dict.get('support', ''))
                     print("unclassified: metafile = {}, plg_dict = {}".format(metafile, str(plg_dict)))
                     
                 plg_dict['desc'].append('')
@@ -221,7 +263,7 @@ def build_pluginlist( plugin_type='all' ):
     return result
 
 
-def write_rstfile(plgtype='All', heading=''):
+def write_rstfile(plgtype='All', plgtype_print='', heading=''):
     """
     Create a .rst file for each plugin category
     """
@@ -231,20 +273,39 @@ def write_rstfile(plgtype='All', heading=''):
         title = heading
 
     rst_filename = 'plugins_doc/plugins_'+plgtype.lower()+'.rst'
+    rst_dummyname = 'plugins_doc/dummy_'+plgtype.lower()+'.rst'
     print('Datei: '+rst_filename+ ' '*(26-len(rst_filename)) +'  -  '+title)
     
     plglist = build_pluginlist(plgtype)
     
+#    print("> Opening file "+plugin_rst_dir+'/'+rst_filename)
     fh = open(plugin_rst_dir+'/'+rst_filename, "w")
+    fh_dummy = open(plugin_rst_dir+'/'+rst_dummyname, "w")
+
 #    fh.write(title+'\n')
 #    fh.write('-'*len(title)+'\n')
+    if plgtype != type_unclassified:
+        fh.write('.. index:: Plugins; '+plgtype_print+'\n')
+        fh.write('\n')
     fh.write('.. include:: /plugins_doc/plugins_'+plgtype+'_header.rst\n')
     fh.write('\n')
 
     if (len(plglist) == 0):
         fh.write('At the moments there are no plugins that have not been classified.\n')
     else:
-        # write toc
+        # write toctree to dummy file to suppress warnings for not included README.md files.
+        fh_dummy.write(':orphan:\n')
+        fh_dummy.write('\n')
+        fh_dummy.write('.. This file is only created to suppress Sphinx warnings about README.md files not beeing included in any toctree.\n')
+        fh_dummy.write('\n')
+        fh_dummy.write('.. toctree::\n')
+        fh_dummy.write('   :maxdepth: 2\n')
+        fh_dummy.write('   :glob:\n')
+        fh_dummy.write('   :titlesonly:\n')
+        fh_dummy.write('   :hidden:\n')
+        fh_dummy.write('\n')
+
+        # write toctree
         fh.write('.. toctree::\n')
         fh.write('   :maxdepth: 2\n')
         fh.write('   :glob:\n')
@@ -252,7 +313,23 @@ def write_rstfile(plgtype='All', heading=''):
         fh.write('   :hidden:\n')
         fh.write('\n')
         for plg in plglist:
-            fh.write('   /plugins/'+plg['name']+'/README.md\n')
+            fh_dummy.write('   /plugins/'+plg['name']+'/README.md\n')
+            if docu_type == 'user':
+                fp = plg['name']+'/user_doc'
+#                fp_ignore = plg['name']+'/developer_doc'
+                if os.path.isfile(fp+'.rst') or os.path.isfile(fp+'.md'):
+                    fh.write('   /plugins/'+fp+'\n')
+#                if os.path.isfile(fp_ignore+'.rst') or os.path.isfile(fp_ignore+'.md'):
+#                    fh_dummy.write('   /plugins/'+fp_ignore+'\n')
+            elif docu_type == 'developer':
+                fp = plg['name']+'/developer_doc'
+#                fp_ignore = plg['name']+'/user_doc'
+                if os.path.isfile(fp+'.rst') or os.path.isfile(fp+'.md'):
+                    fh.write('   /plugins/'+fp+'\n')
+#                if os.path.isfile(fp_ignore+'.rst') or os.path.isfile(fp_ignore+'.md'):
+#                    fh_dummy.write('   /plugins/'+fp_ignore+'\n')
+            else:
+                fh.write('   /plugins/'+plg['name']+'/README.md\n')
         fh.write('\n')
         
         # write table with details
@@ -262,28 +339,42 @@ def write_rstfile(plgtype='All', heading=''):
         fh.write('.. table:: \n')
         fh.write('   :widths: grid\n')
         fh.write('\n')
-        fh.write('   +-------------------+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------+-----------------+\n')
-        fh.write('   | Plugin            | Description                                                                                                                                  | Maintainer      | Tester          |\n')
-        fh.write('   +===================+============================================================================================================================+=================+=================+=================+\n')
+        fh.write('   +-'+ '-'*65 +'-+-'+ '-'*165 +'-+-----------------+-----------------+\n')
+        if language == 'de':
+            fh.write('   | {p:<65.65} | {b:<165.165} | Maintainer      | Tester          |\n'.format(p='Plugin', b='Beschreibung'))
+        else:
+            fh.write('   | {p:<65.65} | {b:<165.165} | Maintainer      | Tester          |\n'.format(p='Plugin', b='Description'))
+        fh.write('   +='+ '='*65 +'=+=' + '='*165 + '=+=================+=================+\n')
         for plg in plglist:
-            fh.write('   | {plg:<17.17} | {desc:<140.140} | {maint:<15.15} | {test:<15.15} |\n'.format(plg=plg['name'], desc=plg['desc'][0], maint=plg['maint'][0], test=plg['test'][0]))
+            plg_readme_link = ':doc:`'+plg['name']+' </plugins/'+plg['name']+'/README.md>`'
+            plg_readme_link = ':doc:`'+plg['name']+' <../plugins/'+plg['name']+'/README>`'
+            
+#            fh.write('   | {plg:<65.65} | {desc:<165.165} | {maint:<15.15} | {test:<15.15} |\n'.format(plg=plg['name'], desc=plg['desc'][0], maint=plg['maint'][0], test=plg['test'][0]))
+            fh.write('   | {plg:<65.65} | {desc:<165.165} | {maint:<15.15} | {test:<15.15} |\n'.format(plg=plg_readme_link, desc=plg['desc'][0], maint=plg['maint'][0], test=plg['test'][0]))
             for l in range(1, len(plg['desc'])):
-                fh.write('   | {plg:<17.17} | {desc:<140.140} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc=plg['desc'][l], maint=plg['maint'][l], test=plg['test'][l]))
+                fh.write('   | {plg:<65.65} | {desc:<165.165} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc=plg['desc'][l], maint=plg['maint'][l], test=plg['test'][l]))
             if plg['doc'] != '':
-                plg['doc'] = "`Additional info <"+plg['doc']+">`_"
-                fh.write('   | {plg:<17.17} |     {desc:<136.136} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc=plg['doc'], maint='', test=''))
+                if language == 'de':
+                    plg['doc'] = "`"+plg['name']+" zusätzliche Infos <"+plg['doc']+">`_"
+                else:
+                    plg['doc'] = "`"+plg['name']+" additional info <"+plg['doc']+">`_"
+                fh.write('   | {plg:<65.65} | - {desc:<163.163} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc=plg['doc'], maint='', test=''))
             if plg['sup'] != '':
-                if plg['doc'] != '':
-                    fh.write('   | {plg:<17.17} |     {desc:<136.136} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc='', maint='', test=''))
-                plg['sup'] = "`Support <"+plg['sup']+">`_"
-                fh.write('   | {plg:<17.17} |     {desc:<136.136} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc=plg['sup'], maint='', test=''))
-            fh.write('   +-------------------+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------+-----------------+\n')
+#                if plg['doc'] != '':
+#                    fh.write('   | {plg:<65.65} |   {desc:<163.163} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc='', maint='', test=''))
+                if language == 'de':
+                    plg['sup'] = "`"+plg['name']+" Unterstützung <"+plg['sup']+">`_"
+                else:
+                    plg['sup'] = "`"+plg['name']+" support <"+plg['sup']+">`_"
+                fh.write('   | {plg:<65.65} | - {desc:<163.163} | {maint:<15.15} | {test:<15.15} |\n'.format(plg='', desc=plg['sup'], maint='', test=''))
+            fh.write('   +-'+ '-'*65 +'-+-'+ '-'*165 +'-+-----------------+-----------------+\n')
         fh.write('\n')
         fh.write('\n')
         
         fh.write('.. include:: /plugins_doc/plugins_footer.rst\n')
 
     fh.close()
+    fh_dummy.close()
     
 
 # ==================================================================================
@@ -291,7 +382,26 @@ def write_rstfile(plgtype='All', heading=''):
 #
 
 if __name__ == '__main__':
-    program_dir = os.getcwd()
+    
+#    print ('Number of arguments:', len(sys.argv), 'arguments.')
+#    print ('Argument List:', str(sys.argv))    
+
+    global language
+    language = 'en'
+
+    
+    if 'de' in sys.argv:
+        language = 'de'
+    if 'en' in sys.argv:
+        language = 'en'
+
+    global docu_type
+    docu_type = start_dir.split('/')[-1:][0]     # developer / user
+
+    print('Start directory        = '+start_dir)
+    print('Documentation type     = '+docu_type)
+    print('Documentation language = '+language)
+    print('')
 
     # change the working diractory to the directory from which the converter is loaded (../tools)
     os.chdir(os.path.dirname(os.path.abspath(os.path.basename(__file__))))
@@ -316,8 +426,7 @@ if __name__ == '__main__':
     
     
 
-
-    plugin_rst_dir = program_dir+'/source'
+    plugin_rst_dir = start_dir+'/source'
     print('zu schreiben in: '+plugin_rst_dir)
 
     plugin_types = []
@@ -326,6 +435,6 @@ if __name__ == '__main__':
            
     for pl in plugin_sections:
 #        write_rstfile(pl[0], pl[1])
-        write_rstfile(pl[0])
+        write_rstfile(pl[0], pl[2])
     print()
     
